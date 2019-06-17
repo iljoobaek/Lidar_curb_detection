@@ -1239,7 +1239,7 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
     print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
     return pc2_message(msg, pc_data)
 
-def run_detection_and_save(data_name, datta, config, tilted_angle=19.2, height=1.195):
+def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.195):
     """t
     Run curb detection algorithm throught all messages in data and store as new rosbag file
     pointcloud = get_pointcloud_from_msg(msg)
@@ -1261,18 +1261,17 @@ def run_detection_and_save(data_name, datta, config, tilted_angle=19.2, height=1
         print 'Invalid config input, should be horizontal or tilted'
         return
     
-    path = '/home/rtml/LiDAR_camera_calibration_work/source/lidar_based/results/'
-    bag_name = path + data_name.split('/')[-1].split('.')[0] + '_processed.bag'
+    bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_processed.bag'
     output_bag = rosbag.Bag(bag_name, 'w')
 
     # /image_raw
-    for topic_0, msg_0, t_0 in lidar_data.topic_0:
+    for topic_0, msg_0, t_0 in data.topic_0:
         output_bag.write(topic_0, msg_0, t=t_0)
 
     rot = rotation_matrix(tilted_angle)
     # /points_raw
     idx = 0
-    for topic_1, msg_1, t_1 in lidar_data.topic_1:
+    for topic_1, msg_1, t_1 in data.topic_1:
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
         msg_1_processed = curb_detection_v3(msg_1, config, rot, height) # run curb detection algorithm 
@@ -1284,6 +1283,7 @@ def run_detection_and_save(data_name, datta, config, tilted_angle=19.2, height=1
 topics = ['/camera/image_raw', '/points_raw']
 path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
 path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
+result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
 if __name__ == '__main__':
     data_path = data_path_loader()
     # data_path = data_path_loader(path_0517)
