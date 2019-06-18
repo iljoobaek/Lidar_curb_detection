@@ -817,13 +817,12 @@ def line_fitting_filter(pointcloud_right, curb_list):
 
 def direction_change_filter(pointcloud, k=8, angle_thres=150.):
     """
-    Detect and return index of points which the direction change
-    is higher than the threshold
+    Detect and return the angle between left and right side of a point
 
     @param pointcloud: input pointcloud (left or right & front in CW order) 
-    @type: numpy array with shape (n, 6)
-    @return: index of curb points 
-    @rtype: numpy array with shape (n, 6) or (n, 7) if comparision needed
+    @type: numpy array with shape (n, x)
+    @return: angle of each point in degree 
+    @rtype: 1d numpy array with shape (n, )
     """
     n = pointcloud.shape[0]
     result = np.zeros((n,1),'float')
@@ -850,10 +849,53 @@ def direction_change_filter(pointcloud, k=8, angle_thres=150.):
 
     angles = vg.angle(right_sum, left_sum)
     angles = np.pad(angles, (k,k), 'constant',constant_values=180.)
-    
-    # result[angles < angle_thres] = 1.
-    # return result
     return angles
+
+def local_min_of_direction_change(pointcloud, half):
+    """
+    Find the local min points from direction change filter
+
+    @param pointcloud: input pointcloud (left or right & front in CW order) 
+    @type: numpy array with shape (n, 6)
+    @param half: input string indicating left or right pointcloud 
+    @type: string
+    @return: index of curb points 
+    @rtype: numpy array with shape (n, 6) or (n, 7) if comparision needed
+    """
+    direction = direction_change_filter(pointcloud)
+    filter_conv = [1., 1., 1., 1., 1.]
+    thres = 3.
+    direction_change = np.where(direction < 150., 1., 0.)
+    direction_change = np.convolve(direction_change.ravel(), filter_conv, 'same')
+    direction_change = np.where(direction_change >= thres, 1., 0.)
+
+    # local min of direction change
+    local_min = np.concatenate(([0.], np.diff(np.sign(np.diff(direction))), [0.]))
+    local_min_index = (local_min > 0.) * (direction < 150.) 
+    return local_min_index
+
+def edge_filter_from_elevation(pointcloud, elevation, half):
+    """
+    Find the possible edge start and edge end points from elevation
+
+    @param pointcloud: input pointcloud (left or right & front in CW order) 
+    @type: numpy array with shape (n, x)
+    @param elevation: input elevation information 
+    @type: 1d numpy array with shape (n, )
+    @param half: input string indicating left or right pointcloud 
+    @type: string
+    @return: index of possible edge start and edge end 
+    @rtype: two numpy array with shape (n, x) or (n, x)
+    """
+    if half == 'left':
+        f_start = [-1,-1,-1,-1,-1,-1,-1,1,1,1,1,1,1,1,1] 
+        f_end = [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0] 
+    else:
+        f_start = [1,1,1,1,1,1,1,1,-1,-1,-1,-1,-1,-1,-1] 
+        f_end = [0,0,0,0,0,0,0,1,1,1,1,1,1,1,1] 
+    edge_start = np.convolve(elevation, f_start, 'same') >= 2.
+    edge_end = np.convolve(elevation, f_end, 'same') >= 6.
+    return edge_start, edge_end
 
 sensor_height = 1.195 
 tilted_angle = 19.2
@@ -981,18 +1023,20 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
     with elevation filter / direction change filter
 
     @param pointcloud: input pointcloud (left or right & front in CW order) 
-    @type: numpy array with shape (n, 6)
+    @type: numpy array with shape (n, 5+n_result)
     @return: index of curb points 
-    @rtype: numpy array with shape (n, 6) or (n, 7) if comparision needed
+    @rtype: numpy array with shape (n, 5+n_result)
     """
     
-    # np array for detection result of curb points
-    curbs = np.empty((0,5),'float')
+    # parameters
+    curbs = np.empty((0,5),'float') # np array for detection result of curb points
+    c_list = np.empty((0,2),'int')
+    curr_start, curr_end, curr_height = 0, 0, 0
     
     # return if not enough points
     n =  pointcloud.shape[0]
     if n - 2 * k < 0:
-        return pointcloud, curbs, np.array([0. ,0., 0., 0., 0., 0.])
+        return pointcloud, curbs, np.array([0. ,0., 0., 0., 0., 0., 0.])
 
     t_now = time.time()
     # reorder the points
@@ -1003,38 +1047,21 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
     # elevation filter
     elevation = elevation_filter(pointcloud, half)
     t_elevation = time.time() - t_now
+    
+    t_now = time.time()
+    # possible edge start and end from elevation info
+    edge_start, edge_end = edge_filter_from_elevation(pointcloud, elevation, half)
+    t_edge = time.time() - t_now
 
     t_now = time.time()
-    # direction change filter
-    direction = direction_change_filter(pointcloud)
-    filter_conv = [1., 1., 1., 1., 1.]
-    thres = 3.
-    direction_change = np.where(direction < 150., 1., 0.)
-    direction_change = np.convolve(direction_change.ravel(), filter_conv, 'same')
-    direction_change = np.where(direction_change >= thres, 1., 0.)
-
     # local min of direction change
-    local_min = np.concatenate(([0.], np.diff(np.sign(np.diff(direction))), [0.]))
-    local_min_index = (local_min > 0.) * (direction < 150.) 
-
-    if half == 'left':
-        f_start = [-1,-1,-1,-1,-1,-1,-1,1,1,1,1,1,1,1,1] 
-        f_end = [1,1,1,1,1,1,1,1,0,0,0,0,0,0,0] 
-    else:
-        f_start = [1,1,1,1,1,1,1,1,-1,-1,-1,-1,-1,-1,-1] 
-        f_end = [0,0,0,0,0,0,0,1,1,1,1,1,1,1,1] 
-    edge_start = np.convolve(elevation.ravel(), f_start, 'same') >= 2.
-    edge_end = np.convolve(elevation.ravel(), f_end, 'same') >= 6.
-    t_direction = time.time() - t_now
+    local_min_index = local_min_of_direction_change(pointcloud, half)
+    t_local_min = time.time() - t_now
     
     t_now = time.time()
     # continuous filter
     conti = continuous_filter(pointcloud)
     t_conti = time.time() - t_now
-
-    # find possible c_list
-    c_list = np.empty((0,2),'int')
-    curr_start, curr_end, curr_height = 0, 0, 0
 
     t_now = time.time()
     # main loop
@@ -1103,14 +1130,12 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
 
     # write detection results to pointcloud array
     pointcloud[edge_start,5] = 1.
-    pointcloud[direction < 130.,6] = 1.
     pointcloud[:,7] = elevation
     pointcloud[:,8] = curb_result
     pointcloud[:,9] = first_curb_result
 
     t_result = time.time() - t_now
-
-    return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_direction*1000,t_conti*1000,t_loop*1000, t_result*1000])
+    return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_edge*1000,t_local_min*1000,t_conti*1000,t_loop*1000, t_result*1000])
 
 def curb_detection_v2(msg, config, rot, height):
     """
@@ -1189,7 +1214,7 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
     # (x, y, z, index, ring)
     curbs_l = np.empty((0,5),'float') 
     curbs_r = np.empty((0,5),'float') 
-    tt = np.zeros(6,'float')
+    tt = np.zeros(7,'float')
 
     t_rest = 0
     t_now = time.time()
