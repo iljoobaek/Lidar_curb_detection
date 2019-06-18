@@ -14,7 +14,6 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import CameraInfo, PointField
 
 from skimage.measure import LineModelND, ransac
-import matplotlib.pyplot as plt
 
 parser_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),'..')) + '/ros_velodyne/'
 sys.path.insert(0, parser_dir)
@@ -66,7 +65,7 @@ def rearrange_pointcloud_by_ring(pointcloud):
             print index[i]
     return pc_rearrange, index
 
-def get_pointcloud_list_by_ring_from_pointcloud(pointcloud):
+def get_pointcloud_list_by_ring_from_pointcloud(pointcloud, n_result=5):
     """
     Return a pointcloud list by the order "laser scan 0 to 15"
     
@@ -78,7 +77,7 @@ def get_pointcloud_list_by_ring_from_pointcloud(pointcloud):
     pc_list = []
     for i in range(0, 16):
         pc_i = get_points_from_laser_number(pointcloud, float(i))
-        curb = np.zeros((pc_i.shape[0],1), 'float')
+        curb = np.zeros((pc_i.shape[0],n_result), 'float')
         pc_i = np.hstack((pc_i, curb))
         left_idx = pc_i[:,1] > 0.
         right_idx = pc_i[:,1] <= 0.
@@ -873,7 +872,7 @@ def elevation_filter(pointcloud, half):
     @return: index of curb points 
     @rtype: numpy array with shape (n, 6) or (n, 7) if comparision needed
     """
-    ground = np.zeros((pointcloud.shape[0],1),'float')
+    ground = np.zeros(pointcloud.shape[0],'float')
     pointcloud_xyz = pointcloud[:,:3]
     dist_to_origin = np.linalg.norm(pointcloud_xyz, axis=1)
     thres = dist_to_origin * theta_r
@@ -986,24 +985,24 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
     @return: index of curb points 
     @rtype: numpy array with shape (n, 6) or (n, 7) if comparision needed
     """
-
-    t_start = time.time()
+    
+    # np array for detection result of curb points
     curbs = np.empty((0,5),'float')
+    
     # return if not enough points
     n =  pointcloud.shape[0]
     if n - 2 * k < 0:
-        return np.hstack((pointcloud, np.zeros((n, n_result-1), 'float'))), curbs
+        return pointcloud, curbs, np.array([0. ,0., 0., 0., 0., 0.])
+
+    t_now = time.time()
     # reorder the points
     pointcloud = reorder_pointcloud(pointcloud)
-    
-    edge_s = np.zeros((n,1),'float')
-    pointcloud = np.hstack((pointcloud, edge_s))
+    t_reorder = time.time() - t_now
     
     t_now = time.time()
+    # elevation filter
     elevation = elevation_filter(pointcloud, half)
-    pointcloud = np.hstack((pointcloud, elevation))
     t_elevation = time.time() - t_now
-    print (time.time() - t_start) * 1000
 
     t_now = time.time()
     # direction change filter
@@ -1027,19 +1026,18 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
     edge_start = np.convolve(elevation.ravel(), f_start, 'same') >= 2.
     edge_end = np.convolve(elevation.ravel(), f_end, 'same') >= 6.
     t_direction = time.time() - t_now
-    print (time.time() - t_start) * 1000
     
     t_now = time.time()
     # continuous filter
     conti = continuous_filter(pointcloud)
     t_conti = time.time() - t_now
-    print (time.time() - t_start) * 1000
 
     # find possible c_list
     c_list = np.empty((0,2),'int')
     curr_start, curr_end, curr_height = 0, 0, 0
 
     t_now = time.time()
+    # main loop
     if half == 'left':
         i = n-1
         while i >= 0:
@@ -1087,33 +1085,32 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
                 curr_start, curr_end, curr_height = 0, 0, 0
             i += 1
     t_loop = time.time() - t_now
-    print (time.time() - t_start) * 1000
-    # print "loop time: ", t_loop*1000, "ms, conti:", t_conti*1000, "ms, direction:", t_direction*1000, "ms"
 
-    c_list = xxx_filter(pointcloud, c_list)
-
+    t_now = time.time()
     # add curb detection result
-    curb_result = np.zeros((n,1),'float')
+    curb_result = np.zeros(n,'float')
     for c in c_list:
         curb_result[c[0]:c[1]] = 1.
     curb_result[edge_start*local_min_index] = 0.4
     curb_result[edge_end*local_min_index] = 0.7
-    pointcloud = np.hstack((pointcloud, curb_result))
 
     # only choose the first curb detection result
-    first_curb_result = np.zeros((n,1),'float')
+    first_curb_result = np.zeros(n,'float')
     for c in c_list:
         first_curb_result[c[0]:c[1]] = 1.
         curbs = np.vstack((curbs, pointcloud[c[0]:c[1]+1,0:5]))
         break
-    pointcloud = np.hstack((pointcloud, first_curb_result))
 
+    # write detection results to pointcloud array
     pointcloud[edge_start,5] = 1.
     pointcloud[direction < 130.,6] = 1.
+    pointcloud[:,7] = elevation
+    pointcloud[:,8] = curb_result
+    pointcloud[:,9] = first_curb_result
 
-    print (time.time() - t_start) * 1000
-    print "-------"
-    return pointcloud, curbs, np.array([t_loop*1000,t_elevation*1000,t_conti*1000,t_direction*1000, (time.time()-t_start)*1000])
+    t_result = time.time() - t_now
+
+    return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_direction*1000,t_conti*1000,t_loop*1000, t_result*1000])
 
 def curb_detection_v2(msg, config, rot, height):
     """
@@ -1188,26 +1185,26 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
     # get pointcloud list
     pointcloud_list = get_pointcloud_list_by_ring_from_pointcloud(pointcloud)
     t_to_list = time.time() - t_now
-    
+
     # (x, y, z, index, ring)
     curbs_l = np.empty((0,5),'float') 
     curbs_r = np.empty((0,5),'float') 
-    tt = np.zeros(5,'float')
+    tt = np.zeros(6,'float')
 
+    t_rest = 0
     t_now = time.time()
     pc_data = np.empty((0,5+n_result),'float') 
     for i in range(16):
-        curr_index = pc_data.shape[0]
+        # curr_index = pc_data.shape[0]
         pc_l, curb_l, t_l = find_curb_from_half_v031(pointcloud_list[i]['left'],'left')
         pc_r, curb_r, t_r = find_curb_from_half_v031(pointcloud_list[i]['right'],'right')
-        # print pc_l.shape, pc_r.shape
+        t_s = time.time()
         pc_i = np.vstack((pc_l, pc_r))
         pc_data = np.vstack((pc_data, pc_i))
-        # curb_list_l = np.vstack((curb_list_l, curb_l))
-        # curb_list_r = np.vstack((curb_list_r, curb_r))
         curbs_l = np.vstack((curbs_l, curb_l))
         curbs_r = np.vstack((curbs_r, curb_r))
         tt += (t_l + t_r)
+        t_rest += (time.time() - t_s)
     t_detection = time.time() - t_now
 
     # ransac
@@ -1222,6 +1219,7 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
         point_line_l[:,1] = line_y_robust_left
         point_line_l[:,3] = 10
         point_line_l[:,8] = .5
+        point_line_l[:,9] = .5
         pc_data = np.vstack((pc_data, point_line_l))
     if curbs_r.shape[0] > 0:
         model_ransac_right, inliers = ransac(curbs_r[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
@@ -1232,11 +1230,12 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
         point_line_r[:,1] = line_y_robust_right
         point_line_r[:,3] = 10
         point_line_r[:,8] = .5
+        point_line_r[:,9] = .5
         pc_data = np.vstack((pc_data, point_line_r))
     t_ransac = time.time() - t_now
 
     print tt
-    print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+    print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_rest*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
     return pc2_message(msg, pc_data)
 
 def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.195):
@@ -1286,9 +1285,7 @@ path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_poi
 result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
 if __name__ == '__main__':
     data_path = data_path_loader()
-    # data_path = data_path_loader(path_0517)
     # change the number to read different rosbag file
-
     # tilted: 0 to 9 
     # horizontal: 0 to 5 
     print data_path
