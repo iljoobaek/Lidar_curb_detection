@@ -19,6 +19,8 @@ parser_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),'..')) + '/r
 sys.path.insert(0, parser_dir)
 from parser import RosbagParser
 
+import argparse
+
 debug_print = False
 
 def data_path_loader(path='/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'):
@@ -1176,7 +1178,7 @@ def curb_detection_v2(msg, config, rot, height):
 
     return pc2_message(msg, pc_data)
 
-def curb_detection_v3(msg, config, rot, height, n_result=5):
+def curb_detection_v3(pointcloud, config, rot, height, realtime=False, n_result=5):
     """
     Detect and return ros message with additional "curb" information  
     Version two
@@ -1193,7 +1195,6 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
     @rtype: ros pointcloud2 message
     """
     start_time = time.time()
-    pointcloud = get_pointcloud_from_msg(msg)
     if config == 'tilted': 
         pointcloud = rotate_pc(pointcloud, rot)
         pointcloud = translate_z_pc(pointcloud, height)
@@ -1261,10 +1262,15 @@ def curb_detection_v3(msg, config, rot, height, n_result=5):
 
     print tt
     print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_rest*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
-    return pc2_message(msg, pc_data)
+    
+    if realtime:
+        return model_ransac_left, model_ransac_right
+    else:
+        return pc2_message(msg, pc_data)
+
 
 def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.195):
-    """t
+    """
     Run curb detection algorithm throught all messages in data and store as new rosbag file
     pointcloud = get_pointcloud_from_msg(msg)
 
@@ -1278,8 +1284,6 @@ def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.
     @type: float
     @param height: input translation value in z direction
     @type: float
-    @return:  
-    @rtype: 
     """
     if config not in ['horizontal', 'tilted']:
         print 'Invalid config input, should be horizontal or tilted'
@@ -1298,28 +1302,59 @@ def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.
     for topic_1, msg_1, t_1 in data.topic_1:
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
-        msg_1_processed = curb_detection_v3(msg_1, config, rot, height) # run curb detection algorithm 
-        print (time.time() - start_time)* 1000, "s"
+        pointcloud = get_pointcloud_from_msg(msg_1)
+        msg_1_processed = curb_detection_v3_rosbag(pointcloud, config, rot, height) # run curb detection algorithm 
+        print (time.time() - start_time)* 1000, "ms"
         output_bag.write(topic_1, msg_1_processed, t=t_1)
         idx += 1
     output_bag.close()
+
+def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
+    """
+    Run curb detection algorithm in real time
+    
+    @param path: path to the bin file of the point cloud data
+    @type: string
+    @param config: input config of the lidar sensor  
+    @type: string
+    @param tilted_angle: input tilted angle of lidar sensor in degree
+    @type: float
+    @param height: input translation value in z direction
+    @type: float
+    """
+    if config not in ['horizontal', 'tilted']:
+        print 'Invalid config input, should be horizontal or tilted'
+        return
+    rot = rotation_matrix(tilted_angle)
+    while True:
+        pointcloud = np.fromfile(path, dtype=np.float32).reshape(-1, 4)
+        left_model, right_model = curb_detection_v3(pointcloud, config, rot, height, True) # run curb detection algorithm 
+
+
 
 topics = ['/camera/image_raw', '/points_raw']
 path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
 path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
 result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
-if __name__ == '__main__':
-    data_path = data_path_loader()
-    # change the number to read different rosbag file
-    # tilted: 0 to 9 
-    # horizontal: 0 to 5 
-    print data_path
-    data_name = data_path['tilted'][2]
-    # data_name = data_path['horizontal'][2]
-    print data_name
-    
-    lidar_data = RosbagParser(data_name, topics)
-    run_detection_and_save(data_name, lidar_data, 'tilted')
-    # run_detection_and_save(data_name, lidar_data, 'horizontal)
 
-    # visualize_from_bag(lidar_data, 'tilted')
+parser = argparse.ArgumentParser(description='Optional description')
+parser.add_argument('source', type=str, help='From rosbag file or from bin file in real time')
+args = parser.parse_args()
+if __name__ == '__main__':
+    print args.source
+    if args.source not in ['rosbag', 'realtime']:
+        print 'Invalid argument, should be \'rosbag\' or \'realtime\''
+        sys.exit()
+    
+    if args.source == 'rosbag': 
+        data_path = data_path_loader()
+        # change the number to read different rosbag file
+        # tilted: 0 to 9 
+        # horizontal: 0 to 5 
+        data_name = data_path['tilted'][2]
+        print data_name
+        
+        lidar_data = RosbagParser(data_name, topics)
+        run_detection_and_save(data_name, lidar_data, 'tilted')
+    else:
+        run_detection_and_display('/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/0424_tilted_CIC_Forbes_Morewood_Fifth_Craig_sync/velodyne_points/data/0000000000.bin','tilted')
