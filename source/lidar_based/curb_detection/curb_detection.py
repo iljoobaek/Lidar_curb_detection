@@ -1178,7 +1178,7 @@ def curb_detection_v2(msg, config, rot, height):
 
     return pc2_message(msg, pc_data)
 
-def curb_detection_v3(pointcloud, config, rot, height, realtime=False, n_result=5):
+def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
     """
     Detect and return ros message with additional "curb" information  
     Version two
@@ -1233,39 +1233,42 @@ def curb_detection_v3(pointcloud, config, rot, height, realtime=False, n_result=
         t_rest += (time.time() - t_s)
     t_detection = time.time() - t_now
 
-    # ransac
+
     t_now = time.time()
-    line_x = np.arange(0, 25, 0.1)
+    # ransac
+    model_ransac_left, model_ransac_right = None, None
     if curbs_l.shape[0] > 0:
         model_ransac_left, inliers = ransac(curbs_l[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
-        line_y_robust_left = model_ransac_left.predict_y(line_x)
-        
-        point_line_l = np.zeros((250,5+n_result),'float') 
-        point_line_l[:,0] = line_x
-        point_line_l[:,1] = line_y_robust_left
-        point_line_l[:,3] = 10
-        point_line_l[:,8] = .5
-        point_line_l[:,9] = .5
-        pc_data = np.vstack((pc_data, point_line_l))
     if curbs_r.shape[0] > 0:
         model_ransac_right, inliers = ransac(curbs_r[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
-        line_y_robust_right = model_ransac_right.predict_y(line_x)
-    
-        point_line_r = np.zeros((250,5+n_result),'float') 
-        point_line_r[:,0] = line_x
-        point_line_r[:,1] = line_y_robust_right
-        point_line_r[:,3] = 10
-        point_line_r[:,8] = .5
-        point_line_r[:,9] = .5
-        pc_data = np.vstack((pc_data, point_line_r))
     t_ransac = time.time() - t_now
 
-    print tt
-    print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_rest*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+    if debug_print:
+        print tt
+        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_rest*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
     
-    if realtime:
+    if msg == None:
         return model_ransac_left, model_ransac_right
     else:
+        line_x = np.arange(0, 25, 0.1)
+        if model_ransac_left != None:
+            line_y_robust_left = model_ransac_left.predict_y(line_x)
+            point_line_l = np.zeros((250,5+n_result),'float') 
+            point_line_l[:,0] = line_x
+            point_line_l[:,1] = line_y_robust_left
+            point_line_l[:,3] = 10
+            point_line_l[:,8] = .5
+            point_line_l[:,9] = .5
+            pc_data = np.vstack((pc_data, point_line_l))
+        if model_ransac_right != None:
+            line_y_robust_right = model_ransac_right.predict_y(line_x)
+            point_line_r = np.zeros((250,5+n_result),'float') 
+            point_line_r[:,0] = line_x
+            point_line_r[:,1] = line_y_robust_right
+            point_line_r[:,3] = 10
+            point_line_r[:,8] = .5
+            point_line_r[:,9] = .5
+            pc_data = np.vstack((pc_data, point_line_r))
         return pc2_message(msg, pc_data)
 
 
@@ -1303,7 +1306,7 @@ def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
         pointcloud = get_pointcloud_from_msg(msg_1)
-        msg_1_processed = curb_detection_v3_rosbag(pointcloud, config, rot, height) # run curb detection algorithm 
+        msg_1_processed = curb_detection_v3(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         print (time.time() - start_time)* 1000, "ms"
         output_bag.write(topic_1, msg_1_processed, t=t_1)
         idx += 1
@@ -1326,10 +1329,31 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
         print 'Invalid config input, should be horizontal or tilted'
         return
     rot = rotation_matrix(tilted_angle)
-    while True:
-        pointcloud = np.fromfile(path, dtype=np.float32).reshape(-1, 4)
-        left_model, right_model = curb_detection_v3(pointcloud, config, rot, height, True) # run curb detection algorithm 
+    
+    # initialize visualizer
+    vis = open3d.Visualizer()
+    vis.create_window(window_name='point cloud', width=1280, height=960)
+    pcd = open3d.PointCloud()
+    ctr = vis.get_view_control()
 
+    # draw coodinate axis at (0, 0, -0.9)
+    add_origin_axis(vis)
+
+    idx = 0
+    while True:
+        print 'frame', idx
+        pointcloud = np.fromfile(path, dtype=np.float32).reshape(-1, 5)
+        n = pointcloud.shape[0]
+        left_model, right_model = curb_detection_v3(pointcloud, config, rot, height) # run curb detection algorithm 
+
+        color_map = get_color(pointcloud) 
+        # visualizing lidar points in camera coordinates
+        if idx == 0:
+            pcd.points = open3d.Vector3dVector(pointcloud[:,:3])
+            vis.add_geometry(pcd)
+        update_vis(vis, pcd, pointcloud[:,:3], color_map)
+        idx += 1
+    vis.destroy_window()
 
 
 topics = ['/camera/image_raw', '/points_raw']
@@ -1357,4 +1381,4 @@ if __name__ == '__main__':
         lidar_data = RosbagParser(data_name, topics)
         run_detection_and_save(data_name, lidar_data, 'tilted')
     else:
-        run_detection_and_display('/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/0424_tilted_CIC_Forbes_Morewood_Fifth_Craig_sync/velodyne_points/data/0000000000.bin','tilted')
+        run_detection_and_display('/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin','tilted')
