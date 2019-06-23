@@ -125,6 +125,22 @@ def get_color(pointcloud):
         color[idx] = c_map[i] 
     return color
 
+def get_color_from_curb(pointcloud):
+    """ 
+    Get the color for each point from hardcoded color map for each scan line [0, 15]
+
+    @param pointcloud: input pointcloud
+    @type: numpy array with shape (n, 5)
+    @return: output color map for the pointcloud
+    @rtype: numpy array with shape (n, 3)
+    """ 
+    n, c = pointcloud.shape
+    color = np.zeros((n, 3), dtype='float')
+    color[pointcloud[:,9] == 0.] = [0., 0., 0.] 
+    color[pointcloud[:,9] == 0.5] = c_map[0] 
+    color[pointcloud[:,9] == 1.] = c_map[13] 
+    return color
+
 def get_color_elevation(elevation, value=.005):
     """ 
     Get the color for each point by elevation value
@@ -1181,7 +1197,7 @@ def curb_detection_v2(msg, config, rot, height):
 def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
     """
     Detect and return ros message with additional "curb" information  
-    Version two
+    Version three
 
     @param msg: input ros message
     @type: pointcloud2
@@ -1272,7 +1288,7 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
         return pc2_message(msg, pc_data)
 
 
-def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.195):
+def run_detection_and_save(data_name, data, config, visualize=False, tilted_angle=19.2, height=1.195):
     """
     Run curb detection algorithm throught all messages in data and store as new rosbag file
     pointcloud = get_pointcloud_from_msg(msg)
@@ -1295,6 +1311,13 @@ def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.
     bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_processed.bag'
     output_bag = rosbag.Bag(bag_name, 'w')
 
+    if visualize:
+        # initialize visualizer
+        vis = open3d.Visualizer()
+        vis.create_window(window_name='point cloud', width=1280, height=960)
+        pcd = open3d.PointCloud()
+        ctr = vis.get_view_control()
+
     # /image_raw
     for topic_0, msg_0, t_0 in data.topic_0:
         output_bag.write(topic_0, msg_0, t=t_0)
@@ -1309,7 +1332,17 @@ def run_detection_and_save(data_name, data, config, tilted_angle=19.2, height=1.
         msg_1_processed = curb_detection_v3(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         print (time.time() - start_time)* 1000, "ms"
         output_bag.write(topic_1, msg_1_processed, t=t_1)
+        pointcloud_p = get_pointcloud_from_msg(msg_1_processed)
+        if visualize:
+            color_map = get_color_from_curb(pointcloud_p) 
+            # visualizing lidar points in camera coordinates
+            if idx == 0:
+                pcd.points = open3d.Vector3dVector(pointcloud_p[:,:3])
+                vis.add_geometry(pcd)
+            update_vis(vis, pcd, pointcloud_p[:,:3], color_map)
         idx += 1
+    if visualize:
+        vis.destroy_window()
     output_bag.close()
 
 def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
@@ -1379,6 +1412,6 @@ if __name__ == '__main__':
         print data_name
         
         lidar_data = RosbagParser(data_name, topics)
-        run_detection_and_save(data_name, lidar_data, 'tilted')
+        run_detection_and_save(data_name, lidar_data, 'tilted', visualize=True)
     else:
         run_detection_and_display('/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin','tilted')
