@@ -1199,16 +1199,18 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
     Detect and return ros message with additional "curb" information  
     Version three
 
-    @param msg: input ros message
-    @type: pointcloud2
+    @param pointcloud: input pointcloud from realtime or rosbag msg
+    @type: numpy array
     @param config: input config of the lidar sensor  
     @type: string
     @param rot: input rotation matrix
     @type: numpy array with shape (3, 3)
     @param height: input translation value in z direction
     @type: float
-    @return: output ros message 
-    @rtype: ros pointcloud2 message
+    @param msg: input ros message
+    @type: pointcloud2
+    @return: output ros message / pc_data, line_model_left, line_model_right
+    @rtype: ros pointcloud2 message / numpy array with shape (n, 5+n_result),line model from skimage
     """
     start_time = time.time()
     if config == 'tilted': 
@@ -1233,22 +1235,18 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
     curbs_r = np.empty((0,5),'float') 
     tt = np.zeros(7,'float')
 
-    t_rest = 0
     t_now = time.time()
     pc_data = np.empty((0,5+n_result),'float') 
     for i in range(16):
         # curr_index = pc_data.shape[0]
         pc_l, curb_l, t_l = find_curb_from_half_v031(pointcloud_list[i]['left'],'left')
         pc_r, curb_r, t_r = find_curb_from_half_v031(pointcloud_list[i]['right'],'right')
-        t_s = time.time()
         pc_i = np.vstack((pc_l, pc_r))
         pc_data = np.vstack((pc_data, pc_i))
         curbs_l = np.vstack((curbs_l, curb_l))
         curbs_r = np.vstack((curbs_r, curb_r))
         tt += (t_l + t_r)
-        t_rest += (time.time() - t_s)
     t_detection = time.time() - t_now
-
 
     t_now = time.time()
     # ransac
@@ -1261,10 +1259,12 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
 
     if debug_print:
         print tt
-        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", t_rest*1000, "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
-    
+        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+
+    # realtime option    
     if msg == None:
-        return model_ransac_left, model_ransac_right
+        return pc_data, model_ransac_left, model_ransac_right
+    # rosbag option    
     else:
         line_x = np.arange(0, 25, 0.1)
         if model_ransac_left != None:
@@ -1287,11 +1287,9 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
             pc_data = np.vstack((pc_data, point_line_r))
         return pc2_message(msg, pc_data)
 
-
 def run_detection_and_save(data_name, data, config, visualize=False, tilted_angle=19.2, height=1.195):
     """
     Run curb detection algorithm throught all messages in data and store as new rosbag file
-    pointcloud = get_pointcloud_from_msg(msg)
 
     @param data_name: input name of the rosbag file
     @type: string
@@ -1299,6 +1297,8 @@ def run_detection_and_save(data_name, data, config, visualize=False, tilted_angl
     @type: RosbagParser object
     @param config: input config of the lidar sensor  
     @type: string
+    @param visualize: set visualize to True to visualize the result in open3D   
+    @type: boolean
     @param tilted_angle: input tilted angle of lidar sensor in degree
     @type: float
     @param height: input translation value in z direction
@@ -1377,32 +1377,31 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
         print 'frame', idx
         pointcloud = np.fromfile(path, dtype=np.float32).reshape(-1, 5)
         n = pointcloud.shape[0]
-        left_model, right_model = curb_detection_v3(pointcloud, config, rot, height) # run curb detection algorithm 
+        pointcloud_p, left_model, right_model = curb_detection_v3(pointcloud, config, rot, height) # run curb detection algorithm 
 
-        color_map = get_color(pointcloud) 
+        color_map = get_color_from_curb(pointcloud_p) 
         # visualizing lidar points in camera coordinates
         if idx == 0:
-            pcd.points = open3d.Vector3dVector(pointcloud[:,:3])
+            pcd.points = open3d.Vector3dVector(pointcloud_p[:,:3])
             vis.add_geometry(pcd)
-        update_vis(vis, pcd, pointcloud[:,:3], color_map)
+        update_vis(vis, pcd, pointcloud_p[:,:3], color_map)
         idx += 1
     vis.destroy_window()
-
 
 topics = ['/camera/image_raw', '/points_raw']
 path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
 path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
 result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
 
-parser = argparse.ArgumentParser(description='Optional description')
+parser = argparse.ArgumentParser(description='Run with either \'rosbag\' or \'realtime\' option')
 parser.add_argument('source', type=str, help='From rosbag file or from bin file in real time')
 args = parser.parse_args()
 if __name__ == '__main__':
-    print args.source
     if args.source not in ['rosbag', 'realtime']:
         print 'Invalid argument, should be \'rosbag\' or \'realtime\''
         sys.exit()
     
+    # rosbag option: read from source rosbag file and save the result rosbag at result_path
     if args.source == 'rosbag': 
         data_path = data_path_loader()
         # change the number to read different rosbag file
@@ -1410,8 +1409,11 @@ if __name__ == '__main__':
         # horizontal: 0 to 5 
         data_name = data_path['tilted'][2]
         print data_name
-        
         lidar_data = RosbagParser(data_name, topics)
+        # set "visualize = True" to visualize the result in open3D
         run_detection_and_save(data_name, lidar_data, 'tilted', visualize=True)
+    
+    # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:
-        run_detection_and_display('/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin','tilted')
+        data_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin'
+        run_detection_and_display(data_path, 'tilted')
