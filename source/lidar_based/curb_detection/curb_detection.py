@@ -1089,7 +1089,7 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
             if local_min_index[i] and edge_start[i]:
                 curr_start = i
                 missed = 0
-                while i-1 < n:
+                while i-1 >= 0:
                     if local_min_index[i] and edge_start[i] and curr_height < min_curb_height:
                         curr_start = i
                     curr_end = i
@@ -1403,11 +1403,11 @@ if __name__ == '__main__':
     
     # rosbag option: read from source rosbag file and save the result rosbag at result_path
     if args.source == 'rosbag': 
-        data_path = data_path_loader()
+        data_path = data_path_loader(path_0517)
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-        data_name = data_path['tilted'][2]
+        data_name = data_path['tilted'][10]
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
