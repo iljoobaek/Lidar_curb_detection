@@ -694,8 +694,9 @@ def find_edge_from_left_half_v02(pointcloud_left, k=4, thres_slope=0.05,thres_fl
 def reorder_pointcloud(pointcloud):
     n = pointcloud.shape[0]
     theta = np.zeros(n, 'float') 
-    for i in range(n):
-        theta[i] = -np.arctan2(pointcloud[i,1], pointcloud[i,0]) * 180 / np.pi 
+    # for i in range(n):
+    #     theta[i] = -np.arctan2(pointcloud[i,1], pointcloud[i,0]) * 180 / np.pi 
+    theta = -np.arctan2(pointcloud[:,1], pointcloud[:,0]) * 180 / np.pi 
     order = np.argsort(theta)
     return pointcloud[order,:]
 
@@ -995,6 +996,24 @@ def xxx_filter(pointcloud, curb_list):
     curb_list = [curb for curb in curb_list if dis_in_thres(curb, thres)]  
     return curb_list
 
+angles_tilted = [-(i - tilted_angle) * np.pi / 180. for i in angles]
+theoretical_dist = [sensor_height / np.tan(i) for i in angles_tilted]
+'''
+[1.758389102404863, 1.8976277964159545, 2.0532155737630906, 2.2286655815899494, 
+ 2.4285606747473447, 2.6589955890283625, 2.9282581114767763, 3.2479148905217103, 
+ 3.6346131485375346, 4.113216979119717, 4.722594018009133, 5.527093901251933, 
+ 6.641530768832606, 8.292725502505117, 11.000161937824087, 16.272803632868]
+'''
+def ground_extraction(pointcloud):
+    # projected into polar grid
+    
+    min_range = 0.9 
+    x_max, x_min = np.max(pointcloud[:,0]), np.min(pointcloud[:,0])
+    y_max, y_min = np.max(pointcloud[:,1]), np.min(pointcloud[:,1])
+    dis_xy = np.linalg.norm(pointcloud[:,0:2], axis=1)    
+
+    return pointcloud
+
 def find_curb_from_half_v03(pointcloud, half, compare, k=8, thres_slope=0.08, thres_flat=0.06, n_result=4):
     """
     Detect and return curb points index from single laser group at left or right side of vehicle
@@ -1148,9 +1167,132 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
 
     # write detection results to pointcloud array
     pointcloud[edge_start,5] = 1.
+    pointcloud[:,6] = edge_start
     pointcloud[:,7] = elevation
     pointcloud[:,8] = curb_result
     pointcloud[:,9] = first_curb_result
+
+    t_result = time.time() - t_now
+    return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_edge*1000,t_local_min*1000,t_conti*1000,t_loop*1000, t_result*1000])
+
+def find_boundary_from_half_v01(pointcloud, half, k=8, n_result=5):
+    """
+    Detect and return boundary points index from single laser group at left or right side of vehicle
+    with elevation filter / direction change filter
+
+    @param pointcloud: input pointcloud (left or right & front in CW order) 
+    @type: numpy array with shape (n, 5+n_result)
+    @return: index of boundary points 
+    @rtype: numpy array with shape (n, 5+n_result)
+    """
+    
+    # parameters
+    curbs = np.empty((0,5),'float') # np array for detection result of curb points
+    c_list = np.empty((0,2),'int')
+    curr_start, curr_end, curr_height = 0, 0, 0
+    
+    # return if not enough points
+    n =  pointcloud.shape[0]
+    if n - 2 * k < 0:
+        return pointcloud, curbs, np.array([0. ,0., 0., 0., 0., 0., 0.])
+
+    t_now = time.time()
+    # reorder the points
+    pointcloud = reorder_pointcloud(pointcloud)
+    t_reorder = time.time() - t_now
+    
+    t_now = time.time()
+    # elevation filter
+    elevation = elevation_filter(pointcloud, half)
+    t_elevation = time.time() - t_now
+    
+    t_now = time.time()
+    # possible edge start and end from elevation info
+    edge_start, edge_end = edge_filter_from_elevation(pointcloud, elevation, half)
+    t_edge = time.time() - t_now
+
+    t_now = time.time()
+    # local min of direction change
+    local_min_index = local_min_of_direction_change(pointcloud, half)
+    t_local_min = time.time() - t_now
+    
+    t_now = time.time()
+    # continuous filter
+    conti = continuous_filter(pointcloud)
+    t_conti = time.time() - t_now
+
+    t_now = time.time()
+    # main loop
+    if half == 'left':
+        i = n-1
+        found = False
+        while i >= 0:
+            if local_min_index[i] and edge_start[i]:
+                curr_start = i
+                missed = 0
+                while i-1 >= 0:
+                    if local_min_index[i] and edge_start[i] and curr_height < min_curb_height:
+                        curr_start = i
+                    curr_end = i
+                    if elevation[i] == 0: 
+                        missed += 1
+                    missed_rate =  float(missed) / (curr_start-curr_end+1)
+                    curr_height = pointcloud[curr_end,2] - pointcloud[curr_start,2]
+                    if (missed > 10 and missed_rate > 0.3) or curr_height > max_curb_height or conti[i]:
+                        break
+                    if curr_height >  0.1:
+                        c_list = np.vstack((c_list,[[curr_end, curr_start]]))
+                        found = True
+                        break
+                    i -= 1
+            i -= 1
+            if found: break
+    else:
+        i = 0
+        found = False
+        while i < n:
+            if local_min_index[i] and edge_start[i]:
+                curr_start = i
+                missed = 0
+                while i+1 < n:
+                    if local_min_index[i] and edge_start[i] and curr_height < min_curb_height:
+                        curr_start = i
+                    curr_end = i
+                    if elevation[i] == 0: 
+                        missed += 1
+                    missed_rate =  float(missed) / (curr_end-curr_start+1)
+                    curr_height = pointcloud[curr_end,2] - pointcloud[curr_start,2]
+                    if (missed > 10 and missed_rate > 0.3) or curr_height > max_curb_height or conti[i]:
+                        break
+                    if curr_height >  0.1:
+                        c_list = np.vstack((c_list,[[curr_start, curr_end]]))
+                        found = True
+                        break
+                    i += 1
+                curr_start, curr_end, curr_height = 0, 0, 0
+            i += 1
+            if found: break
+    t_loop = time.time() - t_now
+
+    t_now = time.time()
+    # add boundary detection result
+    curb_result = np.zeros(n,'float')
+    for c in c_list:
+        curb_result[c[0]:c[1]] = 1.
+    curb_result[edge_start*local_min_index] = 0.4
+    curb_result[edge_end*local_min_index] = 0.7
+
+    # only choose the first curb detection result
+    # first_curb_result = np.zeros(n,'float')
+    for c in c_list:
+        curbs = np.vstack((curbs, pointcloud[c[0]:c[1]+1,0:5]))
+
+    # write detection results to pointcloud array
+    pointcloud[edge_start,5] = 1.
+    pointcloud[:,6] = edge_start
+    pointcloud[:,7] = elevation
+    pointcloud[:,8] = curb_result
+    pointcloud[:,9] = curb_result
 
     t_result = time.time() - t_now
     return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_edge*1000,t_local_min*1000,t_conti*1000,t_loop*1000, t_result*1000])
@@ -1287,7 +1429,132 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
             pc_data = np.vstack((pc_data, point_line_r))
         return pc2_message(msg, pc_data)
 
-def run_detection_and_save(data_name, data, config, visualize=False, tilted_angle=19.2, height=1.195):
+def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5):
+    """
+    Detect and return ros message with additional "boundary" information  
+    Version one
+
+    @param pointcloud: input pointcloud from realtime or rosbag msg
+    @type: numpy array
+    @param config: input config of the lidar sensor  
+    @type: string
+    @param rot: input rotation matrix
+    @type: numpy array with shape (3, 3)
+    @param height: input translation value in z direction
+    @type: float
+    @param msg: input ros message
+    @type: pointcloud2
+    @return: output ros message / pc_data, line_model_left, line_model_right
+    @rtype: ros pointcloud2 message / numpy array with shape (n, 5+n_result),line model from skimage
+    """
+    start_time = time.time()
+    if config == 'tilted': 
+        pointcloud = rotate_pc(pointcloud, rot)
+        pointcloud = translate_z_pc(pointcloud, height)
+    else:
+        pointcloud = translate_z_pc(pointcloud, height-0.2)
+    pointcloud = max_height_filter(pointcloud, .45)
+    pointcloud = FOV_positive_x_filter(pointcloud)
+
+    t_now = time.time()
+    # pc_rearrange, index = rearrange_pointcloud_by_ring(pointcloud)
+    t_rearrange = time.time() - t_now
+    
+    t_now = time.time()
+    # get pointcloud list
+    pointcloud_list = get_pointcloud_list_by_ring_from_pointcloud(pointcloud)
+    t_to_list = time.time() - t_now
+
+    # (x, y, z, index, ring)
+    curbs_l = np.empty((0,5),'float') 
+    curbs_r = np.empty((0,5),'float') 
+    tt = np.zeros(7,'float')
+
+    t_now = time.time()
+    pc_data = np.empty((0,5+n_result),'float') 
+    for i in range(16):
+        # curr_index = pc_data.shape[0]
+        pc_l, curb_l, t_l = find_boundary_from_half_v01(pointcloud_list[i]['left'],'left')
+        pc_r, curb_r, t_r = find_boundary_from_half_v01(pointcloud_list[i]['right'],'right')
+        pc_i = np.vstack((pc_l, pc_r))
+        pc_data = np.vstack((pc_data, pc_i))
+        curbs_l = np.vstack((curbs_l, curb_l))
+        curbs_r = np.vstack((curbs_r, curb_r))
+        tt += (t_l + t_r)
+    t_detection = time.time() - t_now
+
+    # try ground extraction here
+    pc_data = ground_extraction(pc_data)
+
+    t_now = time.time()
+    # ransac
+    model_ransac_left, model_ransac_right = None, None
+    if curbs_l.shape[0] > 0:
+        model_ransac_left, inliers = ransac(curbs_l[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
+    if curbs_r.shape[0] > 0:
+        model_ransac_right, inliers = ransac(curbs_r[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
+    t_ransac = time.time() - t_now
+
+    # poly fit 
+    model_l, model_r = None, None
+    if curbs_l.shape[0] > 0:
+        poly_l = np.polyfit(curbs_l[:,0], curbs_l[:,1], 5)  
+        model_l = np.poly1d(poly_l)    
+    if curbs_r.shape[0] > 0:
+        poly_r = np.polyfit(curbs_r[:,0], curbs_r[:,1], 5)      
+        model_r = np.poly1d(poly_r)    
+
+    if debug_print:
+        print tt
+        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+
+    # realtime option    
+    if msg == None:
+        return pc_data, model_ransac_left, model_ransac_right
+    # rosbag option    
+    else:
+        max_dis = 15
+        line_x = np.arange(0, max_dis, 0.1)
+        if model_ransac_left != None:
+            line_y_robust_left = model_ransac_left.predict_y(line_x)
+            point_line_l = np.zeros((max_dis*10,5+n_result),'float') 
+            point_line_l[:,0] = line_x
+            point_line_l[:,1] = line_y_robust_left
+            point_line_l[:,3] = 10
+            point_line_l[:,8] = .5
+            point_line_l[:,9] = .5
+            pc_data = np.vstack((pc_data, point_line_l))
+        if model_ransac_right != None:
+            line_y_robust_right = model_ransac_right.predict_y(line_x)
+            point_line_r = np.zeros((max_dis*10,5+n_result),'float') 
+            point_line_r[:,0] = line_x
+            point_line_r[:,1] = line_y_robust_right
+            point_line_r[:,3] = 10
+            point_line_r[:,8] = .5
+            point_line_r[:,9] = .5
+            pc_data = np.vstack((pc_data, point_line_r))
+        # if model_l != None:
+        #     y_left = model_l(line_x) 
+        #     point_line_l = np.zeros((max_dis*10,5+n_result),'float') 
+        #     point_line_l[:,0] = line_x
+        #     point_line_l[:,1] = y_left
+        #     point_line_l[:,3] = 10
+        #     point_line_l[:,8] = .5
+        #     point_line_l[:,9] = .5
+        #     pc_data = np.vstack((pc_data, point_line_l))
+        # if model_r != None:
+        #     y_right = model_r(line_x) 
+        #     point_line_r = np.zeros((max_dis*10,5+n_result),'float') 
+        #     point_line_r[:,0] = line_x
+        #     point_line_r[:,1] = y_right
+        #     point_line_r[:,3] = 10
+        #     point_line_r[:,8] = .5
+        #     point_line_r[:,9] = .5
+        #     pc_data = np.vstack((pc_data, point_line_r))
+
+        return pc2_message(msg, pc_data)
+
+def run_detection_and_save(data_name, data, config, detection_type, visualize=False, tilted_angle=19.2, height=1.195):
     """
     Run curb detection algorithm throught all messages in data and store as new rosbag file
 
@@ -1307,8 +1574,10 @@ def run_detection_and_save(data_name, data, config, visualize=False, tilted_angl
     if config not in ['horizontal', 'tilted']:
         print 'Invalid config input, should be horizontal or tilted'
         return
-    
-    bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_processed.bag'
+    if detection_type == 'curb':    
+        bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_curb.bag'
+    elif detection_type == 'boundary':
+        bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_boundary.bag'
     output_bag = rosbag.Bag(bag_name, 'w')
 
     if visualize:
@@ -1329,7 +1598,8 @@ def run_detection_and_save(data_name, data, config, visualize=False, tilted_angl
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
         pointcloud = get_pointcloud_from_msg(msg_1)
-        msg_1_processed = curb_detection_v3(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
+        #msg_1_processed = curb_detection_v3(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
+        msg_1_processed = boundary_detection_v1(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         print (time.time() - start_time)* 1000, "ms"
         output_bag.write(topic_1, msg_1_processed, t=t_1)
         pointcloud_p = get_pointcloud_from_msg(msg_1_processed)
@@ -1403,15 +1673,15 @@ if __name__ == '__main__':
     
     # rosbag option: read from source rosbag file and save the result rosbag at result_path
     if args.source == 'rosbag': 
-        data_path = data_path_loader(path_0517)
+        data_path = data_path_loader()
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-        data_name = data_path['tilted'][10]
+        data_name = data_path['tilted'][7]
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', visualize=True)
+        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False)
     
     # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:
