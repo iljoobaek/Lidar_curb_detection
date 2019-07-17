@@ -37,7 +37,7 @@ __global__ void reorder_them(float *theta, float *pointcloud)
   
   const int i = (blockIdx.x * blockDim.x) + threadIdx.x;
   const int j = threadIdx.y;
-  theta[i]= (-1)*(atan2 (pointcloud[i+(i*j)+1],pointcloud[i+(i*j)]) )* (180.0/PI);
+  theta[i]= (-1)*(atan2 (pointcloud[(2*i)+1],pointcloud[2*i]) ))* (180.0/PI);
   
 }
 """)
