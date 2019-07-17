@@ -30,14 +30,13 @@ debug_print = False
 
 
 kernel_1 = SourceModule("""
-__global__ void reorder_them(float *theta, float *pointcloud)
+__global__ void reorder_them(double *theta, double *pointcloud)
 {
   
-  #define PI 3.14159265
+  #define PI 3.141592653589793
   
-  const int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const int j = threadIdx.y;
-  theta[i]= (-1)*(atan2 (pointcloud[i+(i*j)+1],pointcloud[i+(i*j)]) )* (180.0/PI);
+  const int i = threadIdx.x;
+  theta[i]= (-1)*(atan2 (pointcloud[(2*i)+1],pointcloud[2*i]) )* (180.0/PI);
   
 }
 """)
@@ -1027,24 +1026,24 @@ def reorder_pointcloud(pointcloud):
         n = pointcloud.shape[0]
         
         #GPU opt-1 
-        pointcloud=pointcloud.astype(np.float32)
-        pointcloud_x = pointcloud[:,0].astype(np.float32)
-        pointcloud_12 = pointcloud[:,:2].astype(np.float32)
+        pointcloud=pointcloud.astype(np.float64)
+        pointcloud_x = pointcloud[:,0].astype(np.float64)
+        pointcloud_12 = pointcloud[:,:2].astype(np.float64)
         theta = np.zeros_like(pointcloud[:,0])
          
-        
-        
         
         reorder_them = kernel_1.get_function("reorder_them")
         reorder_them(
         drv.Out(theta), drv.In(pointcloud_12),
-        block=(n,2,1), grid=(1,1))
+        block=(n,1,1), grid=(1,1))
+        
         '''
         #cpu -opt- 1    
-        theta = np.zeros(n, 'float') 
+        theta1 = np.zeros(n, 'float') 
         for i in range(n):
-            theta[i] = -np.arctan2(pointcloud[i,1], pointcloud[i,0]) * 180 / np.pi 
+            theta1[i] = -np.arctan2(pointcloud[i,1], pointcloud[i,0]) * 180 / np.pi 
         '''
+
         
         order = np.argsort(theta)
         return pointcloud[order,:]
