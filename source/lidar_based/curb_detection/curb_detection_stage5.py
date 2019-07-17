@@ -30,14 +30,13 @@ debug_print = False
 
 
 kernel_1 = SourceModule("""
-__global__ void reorder_them(float *theta, float *pointcloud)
+__global__ void reorder_them(double *theta, double *pointcloud)
 {
   
-  #define PI 3.14159265
+  #define PI 3.141592653589793
   
   const int i = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const int j = threadIdx.y;
-  theta[i]= (-1)*(atan2 (pointcloud[i+(i*j)+1],pointcloud[i+(i*j)]) )* (180.0/PI);
+  theta[i]= (-1)*(atan2 (pointcloud[2*i+1],pointcloud[2*i]) )* (180.0/PI);
   
 }
 """)
@@ -1041,19 +1040,19 @@ def reorder_pointcloud(pointcloud,num_lis):
         
         n = pointcloud.shape[0]
         #GPU opt-1 
-        pointcloud=pointcloud.astype(np.float32)
+        pointcloud=pointcloud.astype(np.float64)
         pointcloud_x = pointcloud[:,0]
-        pointcloud_12 = pointcloud[:,:2].astype(np.float32)
+        pointcloud_12 = pointcloud[:,:2].astype(np.float64)
         theta = np.zeros_like(pointcloud_x)
 
-        num_threads=128
+        num_threads=1024
         num_blocks=int((n+num_threads-1)/num_threads)
         #print(num_blocks)
 
         reorder_them = kernel_1.get_function("reorder_them")
         reorder_them(
         drv.Out(theta), drv.In(pointcloud_12),
-        block=(num_threads,2,1), grid=(num_blocks,1))
+        block=(num_threads,1,1), grid=(num_blocks,1))
         
         pc_list=[]
         for i in range(1,33,2):
@@ -1438,7 +1437,7 @@ def run_detection_and_save(data_name, data, config, visualize=False, tilted_angl
         vis.destroy_window()
     output_bag.close()
 
-def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
+def run_detection_and_display(path, config, tilted_angle=15, height=1.125):
     """
     Run curb detection algorithm in real time
     
