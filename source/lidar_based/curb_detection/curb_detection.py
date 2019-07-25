@@ -2,8 +2,11 @@ import os
 import time
 from os.path import isfile, join
 import sys
-import glob
+import threading
+import multiprocessing
+import ctypes
 
+import glob
 import numpy as np
 import vg
 import open3d
@@ -87,6 +90,26 @@ def get_pointcloud_list_by_ring_from_pointcloud(pointcloud, n_result=5):
         right = pc_i[right_idx]
         pc_list.append({'left': left, 'right': right})
     return pc_list
+
+def get_rearranged_pointcloud(pointcloud):
+    pointcloud_re = np.empty_like(pointcloud)
+    range_idx = []
+    cur = 0
+    for i in range(0, 16):
+        pc_i = get_points_from_laser_number(pointcloud, float(i))
+        left_idx = pc_i[:,1] > 0.
+        right_idx = pc_i[:,1] <= 0.
+        left = pc_i[left_idx]
+        right = pc_i[right_idx]
+        left = reorder_pointcloud(left)
+        right = reorder_pointcloud(right)
+        len_l, len_r = left.shape[0], right.shape[0]
+        pointcloud_re[cur:cur+len_l] = left
+        pointcloud_re[cur+len_l:cur+len_l+len_r] = right
+        range_idx.append([cur, cur+len_l])
+        range_idx.append([cur+len_l, cur+len_l+len_r])
+        cur += (len_l + len_r)
+    return pointcloud_re, range_idx
 
 """
 color map for laser scan 0 to 15
@@ -1005,14 +1028,76 @@ theoretical_dist = [sensor_height / np.tan(i) for i in angles_tilted]
  6.641530768832606, 8.292725502505117, 11.000161937824087, 16.272803632868]
 '''
 def ground_extraction(pointcloud):
-    # projected into polar grid
-    
-    min_range = 0.9 
-    x_max, x_min = np.max(pointcloud[:,0]), np.min(pointcloud[:,0])
-    y_max, y_min = np.max(pointcloud[:,1]), np.min(pointcloud[:,1])
-    dis_xy = np.linalg.norm(pointcloud[:,0:2], axis=1)    
+    # height threshold
+    H_th, H_max = 0.1, 0.4
+    # projected into grid
+    resolution, r, c = 0.5, 40, 80
+    grid = np.zeros((r, c), 'int')
+    min_scan = np.full((r, c), -1., 'float')
+    max_h = np.full((r, c), -1., 'float')
 
+    for i in range(pointcloud.shape[0]):
+        x_idx, y_idx = int(pointcloud[i,0] / 0.5), int((pointcloud[i,1] + 20) / 0.5)
+        if x_idx < 40 and y_idx < 80 and y_idx >= 0: 
+            if pointcloud[i,2] > H_max: 
+                pointcloud[i,9] = 1.
+                continue
+            if grid[x_idx][y_idx] == 0: 
+                max_h[x_idx][y_idx] = pointcloud[i,2]
+                min_scan[x_idx][y_idx] = pointcloud[i,4]
+            if pointcloud[i][4] > min_scan[x_idx][y_idx] and pointcloud[i,2] - max_h[x_idx][y_idx] > H_th:
+                pointcloud[i,9] = 1.
+            else:
+                max_h[x_idx][y_idx] = np.max([max_h[x_idx][y_idx], pointcloud[i,2]])
+                grid[x_idx][y_idx] += 1
     return pointcloud
+
+theoretical_dist_2 = [sensor_height / np.sin(i) for i in angles_tilted]
+def obstacle_extraction(pointcloud_i, continuous, side):
+    """
+    Return points classified as obstacles 
+
+    @param pointcloud_i: input pointcloud with only scan i (left or right & front in CW order) 
+    @type: numpy array with shape (n, x)
+    @return: pointcloud_i with a column showing the result 
+    @rtype: 2d numpy array 
+    """
+    n, ring = pointcloud_i.shape[0], int(pointcloud_i[0,4])
+    dist = np.linalg.norm(pointcloud_i[:,0:3], axis=1)
+    height_thres = 0.3
+    cur_start, cur_end = -1, -1
+    dis = 0
+    if side == "right":
+        i = 0
+        while i < n:
+            if i == 0 and pointcloud_i[i,2] > height_thres:
+                cur_start = i
+                dis = theoretical_dist_2[ring]
+            elif cur_start == -1 and i - 1 >= 0 and continuous[i-1] and continuous[i] and dist[i-1] > dist[i]: 
+                cur_start = i
+                dis = dist[i-1]
+            elif cur_start != -1 and dist[i] > dis: 
+                pointcloud_i[cur_start:i,9] = 1.
+                cur_start = -1
+            if i == n-1 and cur_start != -1:
+                pointcloud_i[cur_start:i,9] = 1.
+            i += 1
+    else:
+        i = n - 1
+        while i >= 0:
+            if i == n - 1 and pointcloud_i[i,2] > height_thres:
+                cur_start = i
+                dis = theoretical_dist_2[ring]
+            elif cur_start == -1 and i + 1 < n and continuous[i+1] and continuous[i] and dist[i+1] > dist[i]: 
+                cur_start = i
+                dis = dist[i+1]
+            elif cur_start != -1 and dist[i] > dis: 
+                pointcloud_i[i+1:cur_start+1,9] = 1.
+                cur_start = -1
+            if i == 0 and cur_start != -1:
+                pointcloud_i[i+1:cur_start+1,9] = 1.
+            i -= 1
+    return pointcloud_i
 
 def find_curb_from_half_v03(pointcloud, half, compare, k=8, thres_slope=0.08, thres_flat=0.06, n_result=4):
     """
@@ -1171,7 +1256,7 @@ def find_curb_from_half_v031(pointcloud, half, k=8, n_result=5):
     pointcloud[:,7] = elevation
     pointcloud[:,8] = curb_result
     pointcloud[:,9] = first_curb_result
-
+    
     t_result = time.time() - t_now
     return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_edge*1000,t_local_min*1000,t_conti*1000,t_loop*1000, t_result*1000])
 
@@ -1238,7 +1323,11 @@ def find_boundary_from_half_v01(pointcloud, half, k=8, n_result=5):
                         missed += 1
                     missed_rate =  float(missed) / (curr_start-curr_end+1)
                     curr_height = pointcloud[curr_end,2] - pointcloud[curr_start,2]
-                    if (missed > 10 and missed_rate > 0.3) or curr_height > max_curb_height or conti[i]:
+                    if (missed > 10 and missed_rate > 0.3): # might need to apply different check for "boundary"
+                        break
+                    if curr_height >  0.05 and edge_end[i]:
+                        c_list = np.vstack((c_list,[[curr_end, curr_start]]))
+                        found = True
                         break
                     if curr_height >  0.1:
                         c_list = np.vstack((c_list,[[curr_end, curr_start]]))
@@ -1262,7 +1351,11 @@ def find_boundary_from_half_v01(pointcloud, half, k=8, n_result=5):
                         missed += 1
                     missed_rate =  float(missed) / (curr_end-curr_start+1)
                     curr_height = pointcloud[curr_end,2] - pointcloud[curr_start,2]
-                    if (missed > 10 and missed_rate > 0.3) or curr_height > max_curb_height or conti[i]:
+                    if (missed > 10 and missed_rate > 0.3):
+                        break
+                    if curr_height >  0.05 and edge_end[i]:
+                        c_list = np.vstack((c_list,[[curr_start, curr_end]]))
+                        found = True
                         break
                     if curr_height >  0.1:
                         c_list = np.vstack((c_list,[[curr_start, curr_end]]))
@@ -1289,13 +1382,126 @@ def find_boundary_from_half_v01(pointcloud, half, k=8, n_result=5):
 
     # write detection results to pointcloud array
     pointcloud[edge_start,5] = 1.
-    pointcloud[:,6] = edge_start
+    pointcloud[:,6] = conti
     pointcloud[:,7] = elevation
     pointcloud[:,8] = curb_result
-    pointcloud[:,9] = curb_result
+    
+    # test obstacles
+    obstacle_extraction(pointcloud, conti, half)
 
     t_result = time.time() - t_now
     return pointcloud, curbs, np.array([t_reorder*1000 ,t_elevation*1000,t_edge*1000,t_local_min*1000,t_conti*1000,t_loop*1000, t_result*1000])
+
+def find_boundary_from_half_multiprocess(ring, half, k=8, n_result=5):
+    """
+    Detect and return boundary points index from single laser group at left or right side of vehicle
+    with elevation filter / direction change filter
+
+    @param pointcloud: input pointcloud (left or right & front in CW order) 
+    @type: numpy array with shape (n, 5+n_result)
+    @return: index of boundary points 
+    @rtype: numpy array with shape (n, 5+n_result)
+    """
+    global shared_array, range_idx 
+    idx = ring * 2
+    if half == 'right': idx += 1
+    st, ed = range_idx[idx]
+
+    # parameters
+    c_list = np.empty((0,2),'int')
+    curr_start, curr_end, curr_height = 0, 0, 0
+    
+    # return if not enough points
+    n = ed - st
+    if n - 2 * k < 0:
+        return
+
+    # elevation filter
+    elevation = elevation_filter(shared_array[st:ed], half)
+    
+    # possible edge start and end from elevation info
+    edge_start, edge_end = edge_filter_from_elevation(shared_array[st:ed], elevation, half)
+
+    # local min of direction change
+    local_min_index = local_min_of_direction_change(shared_array[st:ed], half)
+    
+    # continuous filter
+    conti = continuous_filter(shared_array[st:ed])
+
+    # main loop
+    if half == 'left':
+        i = n-1
+        found = False
+        while i >= 0:
+            if local_min_index[i] and edge_start[i]:
+                curr_start = i
+                missed = 0
+                while i-1 >= 0:
+                    if local_min_index[i] and edge_start[i] and curr_height < min_curb_height:
+                        curr_start = i
+                    curr_end = i
+                    if elevation[i] == 0: 
+                        missed += 1
+                    missed_rate =  float(missed) / (curr_start-curr_end+1)
+                    curr_height = shared_array[st+curr_end,2] - shared_array[st+curr_start,2]
+                    if (missed > 10 and missed_rate > 0.3): # might need to apply different check for "boundary"
+                        break
+                    if curr_height >  0.05 and edge_end[i]:
+                        c_list = np.vstack((c_list,[[curr_end, curr_start]]))
+                        found = True
+                        break
+                    if curr_height >  0.1:
+                        c_list = np.vstack((c_list,[[curr_end, curr_start]]))
+                        found = True
+                        break
+                    i -= 1
+            i -= 1
+            if found: break
+    else:
+        i = 0
+        found = False
+        while i < n:
+            if local_min_index[i] and edge_start[i]:
+                curr_start = i
+                missed = 0
+                while i+1 < n:
+                    if local_min_index[i] and edge_start[i] and curr_height < min_curb_height:
+                        curr_start = i
+                    curr_end = i
+                    if elevation[i] == 0: 
+                        missed += 1
+                    missed_rate =  float(missed) / (curr_end-curr_start+1)
+                    curr_height = shared_array[st+curr_end,2] - shared_array[st+curr_start,2]
+                    if (missed > 10 and missed_rate > 0.3):
+                        break
+                    if curr_height >  0.05 and edge_end[i]:
+                        c_list = np.vstack((c_list,[[curr_start, curr_end]]))
+                        found = True
+                        break
+                    if curr_height >  0.1:
+                        c_list = np.vstack((c_list,[[curr_start, curr_end]]))
+                        found = True
+                        break
+                    i += 1
+                curr_start, curr_end, curr_height = 0, 0, 0
+            i += 1
+            if found: break
+    
+    # add boundary detection result
+    curb_result = np.zeros(n,'float')
+    for c in c_list:
+        curb_result[c[0]:c[1]] = 1.
+    curb_result[edge_start*local_min_index] = 0.4
+    curb_result[edge_end*local_min_index] = 0.7
+
+    # write detection results to shared_array array
+    # shared_array[edge_start,5] = 1.
+    shared_array[st:ed,6] = conti
+    shared_array[st:ed,7] = elevation
+    shared_array[st:ed,8] = curb_result
+    
+    # test obstacles
+    obstacle_extraction(shared_array[st:ed], conti, half)
 
 def curb_detection_v2(msg, config, rot, height):
     """
@@ -1453,7 +1659,8 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
         pointcloud = translate_z_pc(pointcloud, height)
     else:
         pointcloud = translate_z_pc(pointcloud, height-0.2)
-    pointcloud = max_height_filter(pointcloud, .45)
+    # pointcloud = max_height_filter(pointcloud, .45)
+    pointcloud = max_height_filter(pointcloud, 1.)
     pointcloud = FOV_positive_x_filter(pointcloud)
 
     t_now = time.time()
@@ -1471,9 +1678,9 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
     tt = np.zeros(7,'float')
 
     t_now = time.time()
-    pc_data = np.empty((0,5+n_result),'float') 
+
+    pc_data = np.zeros((0,5+n_result),'float') 
     for i in range(16):
-        # curr_index = pc_data.shape[0]
         pc_l, curb_l, t_l = find_boundary_from_half_v01(pointcloud_list[i]['left'],'left')
         pc_r, curb_r, t_r = find_boundary_from_half_v01(pointcloud_list[i]['right'],'right')
         pc_i = np.vstack((pc_l, pc_r))
@@ -1482,9 +1689,6 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
         curbs_r = np.vstack((curbs_r, curb_r))
         tt += (t_l + t_r)
     t_detection = time.time() - t_now
-
-    # try ground extraction here
-    pc_data = ground_extraction(pc_data)
 
     t_now = time.time()
     # ransac
@@ -1533,26 +1737,126 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
             point_line_r[:,8] = .5
             point_line_r[:,9] = .5
             pc_data = np.vstack((pc_data, point_line_r))
-        # if model_l != None:
-        #     y_left = model_l(line_x) 
-        #     point_line_l = np.zeros((max_dis*10,5+n_result),'float') 
-        #     point_line_l[:,0] = line_x
-        #     point_line_l[:,1] = y_left
-        #     point_line_l[:,3] = 10
-        #     point_line_l[:,8] = .5
-        #     point_line_l[:,9] = .5
-        #     pc_data = np.vstack((pc_data, point_line_l))
-        # if model_r != None:
-        #     y_right = model_r(line_x) 
-        #     point_line_r = np.zeros((max_dis*10,5+n_result),'float') 
-        #     point_line_r[:,0] = line_x
-        #     point_line_r[:,1] = y_right
-        #     point_line_r[:,3] = 10
-        #     point_line_r[:,8] = .5
-        #     point_line_r[:,9] = .5
-        #     pc_data = np.vstack((pc_data, point_line_r))
 
         return pc2_message(msg, pc_data)
+
+def find_boundary_from_scan(i, num_of_process):
+    num_per_process = 16 / num_of_process
+    for j in range (num_per_process*i, num_per_process*(i+1)):
+        find_boundary_from_half_multiprocess(j,'left')
+        find_boundary_from_half_multiprocess(j,'right')
+
+def boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg=None, n_result=5):
+    """
+    Detect and return ros message with additional "boundary" information  
+    Version one
+
+    @param pointcloud: input pointcloud from realtime or rosbag msg
+    @type: numpy array
+    @param config: input config of the lidar sensor  
+    @type: string
+    @param rot: input rotation matrix
+    @type: numpy array with shape (3, 3)
+    @param height: input translation value in z direction
+    @type: float
+    @param msg: input ros message
+    @type: pointcloud2
+    @return: output ros message / pc_data, line_model_left, line_model_right
+    @rtype: ros pointcloud2 message / numpy array with shape (n, 5+n_result),line model from skimage
+    """
+    start_time = time.time()
+    if config == 'tilted': 
+        pointcloud = rotate_pc(pointcloud, rot)
+        pointcloud = translate_z_pc(pointcloud, height)
+    else:
+        pointcloud = translate_z_pc(pointcloud, height-0.2)
+    # pointcloud = max_height_filter(pointcloud, .45)
+    pointcloud = max_height_filter(pointcloud, 1.)
+    pointcloud = FOV_positive_x_filter(pointcloud)
+
+    t_now = time.time()
+    # pc_rearrange, index = rearrange_pointcloud_by_ring(pointcloud)
+    t_rearrange = time.time() - t_now
+    
+    t_now = time.time()
+    # get pointcloud list
+    # pointcloud_list = get_pointcloud_list_by_ring_from_pointcloud(pointcloud)
+    t_to_list = time.time() - t_now
+
+    tt = np.zeros(7,'float')
+
+    t_now = time.time()
+
+    pointcloud_re, idx = get_rearranged_pointcloud(pointcloud)
+    result_col = np.zeros((pointcloud_re.shape[0], 5),'float')
+    pointcloud_re = np.hstack((pointcloud_re, result_col))
+
+    global range_idx
+    global shared_array 
+    range_idx = idx
+
+    # create shared array *** size of c_double and np.float64 ***
+    m, n =  pointcloud_re.shape
+    shared_arr_based = multiprocessing.RawArray(ctypes.c_double, m*n)
+    shared_arr = np.frombuffer(shared_arr_based, dtype=np.float64).reshape(pointcloud_re.shape)
+    np.copyto(shared_arr, pointcloud_re)
+    shared_array = shared_arr
+
+    # process list
+    processes = []
+    num_of_process = 4
+    for i in range(num_of_process):
+        processes.append(multiprocessing.Process(target = find_boundary_from_scan, args= (i, num_of_process,)))
+        processes[i].start()
+    t_detection = time.time() - t_now
+
+    for i in range(num_of_process):
+        processes[i].join()
+
+    # get left and right list
+    curbs_l = shared_array[np.bitwise_and(shared_array[:,1] > 0., shared_array[:,8] == 1.)]
+    curbs_r = shared_array[np.bitwise_and(shared_array[:,1] <= 0., shared_array[:,8] == 1.)]
+
+    t_now = time.time()
+    # ransac
+    model_ransac_left, model_ransac_right = None, None
+    if curbs_l.shape[0] > 0:
+        model_ransac_left, inliers = ransac(curbs_l[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
+    if curbs_r.shape[0] > 0:
+        model_ransac_right, inliers = ransac(curbs_r[:,:2], LineModelND, min_samples=2, residual_threshold=1, max_trials=100)
+    t_ransac = time.time() - t_now
+
+    if debug_print:
+        print tt
+        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+
+    # realtime option    
+    if msg == None:
+        return pc_data, model_ransac_left, model_ransac_right
+    # rosbag option    
+    else:
+        max_dis = 15
+        line_x = np.arange(0, max_dis, 0.1)
+        if model_ransac_left != None:
+            line_y_robust_left = model_ransac_left.predict_y(line_x)
+            point_line_l = np.zeros((max_dis*10,5+n_result),'float') 
+            point_line_l[:,0] = line_x
+            point_line_l[:,1] = line_y_robust_left
+            point_line_l[:,3] = 10
+            point_line_l[:,8] = .5
+            point_line_l[:,9] = .5
+            shared_array = np.vstack((shared_array, point_line_l))
+        if model_ransac_right != None:
+            line_y_robust_right = model_ransac_right.predict_y(line_x)
+            point_line_r = np.zeros((max_dis*10,5+n_result),'float') 
+            point_line_r[:,0] = line_x
+            point_line_r[:,1] = line_y_robust_right
+            point_line_r[:,3] = 10
+            point_line_r[:,8] = .5
+            point_line_r[:,9] = .5
+            shared_array = np.vstack((shared_array, point_line_r))
+
+        return pc2_message(msg, shared_array)
 
 def run_detection_and_save(data_name, data, config, detection_type, visualize=False, tilted_angle=19.2, height=1.195):
     """
@@ -1593,14 +1897,17 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
 
     rot = rotation_matrix(tilted_angle)
     # /points_raw
+    avg_time = 0
     idx = 0
     for topic_1, msg_1, t_1 in data.topic_1:
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
         pointcloud = get_pointcloud_from_msg(msg_1)
-        #msg_1_processed = curb_detection_v3(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
-        msg_1_processed = boundary_detection_v1(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
-        print (time.time() - start_time)* 1000, "ms"
+        msg_1_processed = boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
+        # msg_1_processed = boundary_detection_v1(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
+        process_time = (time.time() - start_time)* 1000
+        print process_time, "ms"
+        avg_time += process_time 
         output_bag.write(topic_1, msg_1_processed, t=t_1)
         pointcloud_p = get_pointcloud_from_msg(msg_1_processed)
         if visualize:
@@ -1611,6 +1918,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
                 vis.add_geometry(pcd)
             update_vis(vis, pcd, pointcloud_p[:,:3], color_map)
         idx += 1
+    print "Average time:", avg_time / lidar_data.len_1
     if visualize:
         vis.destroy_window()
     output_bag.close()
@@ -1673,15 +1981,15 @@ if __name__ == '__main__':
     
     # rosbag option: read from source rosbag file and save the result rosbag at result_path
     if args.source == 'rosbag': 
-        data_path = data_path_loader()
+        data_path = data_path_loader(path_0517)
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-        data_name = data_path['tilted'][7]
+        data_name = data_path['tilted'][23]
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False)
+        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
     
     # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:
