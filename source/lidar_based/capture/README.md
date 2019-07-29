@@ -1,5 +1,4 @@
-# Lidar_curb_detection
+# From pcap to binary files
 
 ## Build the program by cmake
-Set the dst directory for bin files
-Set the filename of the pcap
+Set the dst directory for bin files and the filename of the pcap
