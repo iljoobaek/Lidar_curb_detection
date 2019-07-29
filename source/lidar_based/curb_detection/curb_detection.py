@@ -5,7 +5,7 @@ import sys
 import threading
 import multiprocessing
 import ctypes
-
+import math
 import glob
 import numpy as np
 import vg
@@ -131,6 +131,68 @@ c_map[12] = np.array([0.5, 1., 0.5])
 c_map[13] = np.array([1., 0.5, 0.5])
 c_map[14] = np.array([0., 0., 1.])
 c_map[15] = np.array([0.5, 0.5, 0.])
+
+import socket
+from thread import *
+
+offsetX, offsetY, offsetZ, scaleX, lidarOffsetZ = 24, -14.96295, -8, 0.964308, -50.06731667
+HOST = '127.0.0.1'
+PORT = 12366
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+radar_socket_buffer = []
+timer = False
+radarPointCloudList = []
+
+def socket_server_start():
+    try:
+    	s.bind((HOST, PORT))
+    except socket.error as msg:
+	    print 'Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1]
+	    sys.exit()
+    s.listen(10)
+    conn, addr = s.accept()
+    generate_radar_socket_buffer(conn)
+
+def generate_radar_socket_buffer(conn):
+    while True:
+        data = conn.recv(29)
+        try:
+            radar_socket_buffer.append((float(data[0:14]), float(data[15:29])))
+        except:
+            radar_socket_buffer.append((float('0'*14), float('0'*14)))
+        if data == ('9'*29):
+            break
+    conn.close()
+
+def expose_radar_socket():
+    global timer
+    while True:
+        timer = True
+        time.sleep(0.35)
+
+def calculate_scaleZ(rawRadarX):
+    if (not np.isnan(rawRadarX) and rawRadarX is not 0):
+        return (74.5 * np.power(rawRadarX*100., -1.12))
+    else:
+        return 0
+
+def generate_radar_pointcloud(length, distance):
+    pointcloud = []
+    scaleZ = calculate_scaleZ(distance)
+    radarX = (distance + offsetX/100.) * scaleX
+    radarUpperZ = ((length / 2.) + offsetZ/100.) * scaleZ + lidarOffsetZ/100.        
+    radarLowerZ = ((-length / 2.) + offsetZ/100.) * scaleZ + lidarOffsetZ/100.
+    radarY = 0.0 + offsetY/100.;
+    try:
+        uBound, lBound = int(math.ceil(radarLowerZ*20)), int(math.floor(radarUpperZ*20))
+    except:
+        uBound, lBound = 0, 0
+    for i in range(uBound, lBound):
+        pointcloud.append((radarY, -radarX, (i)/20., 10, 0))
+        pointcloud.append((radarY, -radarX, (i+1)/20., 10, 0))
+        pointcloud.append((radarY, -radarX, (i+2)/20., 10, 0))
+    print(length, distance, radarX, radarUpperZ, radarLowerZ, uBound, lBound, radarY)
+    return pointcloud
 
 def get_color(pointcloud):
     """ 
@@ -352,7 +414,28 @@ def get_pointcloud_from_msg(msg):
     @return: output pointcloud 
     @rtype: numpy array with shape (n, 5)
     """
+    global radarPointCloudList
+    global timer
     pc_list = list(pc2.read_points(msg))
+    if timer:
+        radarPointCloudList = []
+        length, distance = radar_socket_buffer.pop(0)
+        radarPointCloudList = generate_radar_pointcloud(length, distance)
+        timer = False
+    temp = radarPointCloudList
+    radarPointCloudList = []
+    print("temp" + str(temp))
+    if (len(temp) > 0):
+        if (len(pc_list[0]) > len(temp[0])):
+            for tup in temp:
+                radarPointCloudList.append(tup + (0,0,0,0,0))
+        else:
+            for tup in temp:
+                radarPointCloudList.append(tup[0:5])
+    print("radar: " + str(radarPointCloudList))
+    
+    print("lidar: " + str(pc_list[0:2]))
+    pc_list += (radarPointCloudList)
     return np.array(pc_list, 'float32')
 
 def get_pointcloud_list_from_msg(msg):
@@ -1875,6 +1958,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     @param height: input translation value in z direction
     @type: float
     """
+    socket_server_start()
     if config not in ['horizontal', 'tilted']:
         print 'Invalid config input, should be horizontal or tilted'
         return
@@ -1892,16 +1976,20 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
         ctr = vis.get_view_control()
 
     # /image_raw
-    for topic_0, msg_0, t_0 in data.topic_0:
-        output_bag.write(topic_0, msg_0, t=t_0)
+    #for topic_0, msg_0, t_0 in data.topic_0:
+    #    output_bag.write(topic_0, msg_0, t=t_0)
 
     rot = rotation_matrix(tilted_angle)
     # /points_raw
     avg_time = 0
     idx = 0
+    firstRun = True
     for topic_1, msg_1, t_1 in data.topic_1:
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
+        if firstRun:
+            start_new_thread(expose_radar_socket,())
+            firstRun = False
         pointcloud = get_pointcloud_from_msg(msg_1)
         msg_1_processed = boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         # msg_1_processed = boundary_detection_v1(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
@@ -1966,10 +2054,10 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
         idx += 1
     vis.destroy_window()
 
-topics = ['/camera/image_raw', '/points_raw']
+topics = ['/camera/image_raw', '/velodyne_points']
 path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
 path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
-result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
+result_path = '/home/karun/Lidar_curb_detection/source/lidar_based/results/'
 
 parser = argparse.ArgumentParser(description='Run with either \'rosbag\' or \'realtime\' option')
 parser.add_argument('source', type=str, help='From rosbag file or from bin file in real time')
@@ -1985,11 +2073,11 @@ if __name__ == '__main__':
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-        data_name = data_path['tilted'][23]
+        data_name = 'kesselRun.bag'
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
+        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=True, tilted_angle=15., height=1.125)
     
     # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:

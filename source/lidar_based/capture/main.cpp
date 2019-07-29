@@ -61,10 +61,10 @@ int main( int argc, char* argv[] )
     */
 
     // Open VelodyneCapture that retrieve from PCAP
-    const std::string filename = "/home/rtml/VelodyneCapture/vlp16_pcap_files/center_front_chair_test.pcap";
+    const std::string filename = "kesselRun.pcap";
     velodyne::VLP16Capture capture( filename );
     //velodyne::HDL32ECapture capture( filename ); 
-    const std::string dst = "test/";
+    const std::string dst = "../bin/";
 
     if( !capture.isOpen() ){
         std::cerr << "Can't open VelodyneCapture." << std::endl;
