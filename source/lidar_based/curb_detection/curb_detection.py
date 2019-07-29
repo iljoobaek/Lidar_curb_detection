@@ -5,7 +5,7 @@ import sys
 import threading
 import multiprocessing
 import ctypes
-
+import math
 import glob
 import numpy as np
 import vg
@@ -131,6 +131,65 @@ c_map[12] = np.array([0.5, 1., 0.5])
 c_map[13] = np.array([1., 0.5, 0.5])
 c_map[14] = np.array([0., 0., 1.])
 c_map[15] = np.array([0.5, 0.5, 0.])
+
+import socket
+from thread import *
+offsetX, offsetY, offsetZ, scaleX, lidarOffsetZ = 24, -14.96295, -8, 0.964308, -50.06731667
+HOST = '127.0.0.1'
+PORT = 12350
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+radar_socket_buffer = []
+timer = False
+radarPointCloudList = []
+def socket_server_start():
+    try:
+    	s.bind((HOST, PORT))
+    except socket.error as msg:
+	    print 'Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1]
+	    sys.exit()
+    s.listen(10)
+    conn, addr = s.accept()
+    generate_radar_socket_buffer(conn)
+
+def generate_radar_socket_buffer(conn):
+    while True:
+        data = conn.recv(29)
+        try:
+            radar_socket_buffer.append((float(data[0:14]), float(data[15:29])))
+        except:
+            radar_socket_buffer.append(float('0'*14), float('0'*14))
+        if data == ('9'*29):
+            break
+    conn.close()
+
+def expose_radar_socket():
+    global timer
+    while True:
+        timer = True
+        time.sleep(1.0)
+
+def calculate_scaleZ(rawRadarX):
+    if (not np.isnan(rawRadarX)):
+        return (74.5 * np.power(rawRadarX, -1.12))
+    else:
+        return 0
+
+def generate_radar_pointcloud(length, distance):
+    pointcloud = []
+    scaleZ = calculate_scaleZ(distance)
+    radarX = (distance + offsetX) * scaleX
+    radarUpperZ = ((length / 2.) + offsetZ) * scaleZ + lidarOffsetZ        
+    radarLowerZ = ((-length / 2.) + offsetZ) * scaleZ + lidarOffsetZ
+    radarY = 0.0 + offsetY;
+    try:
+        uBound, lBound = int(math.ceil(radarLowerZ)), int(math.floor(radarUpperZ))
+    except:
+        uBound, lBound = 0, 0
+    for i in range(uBound, lBound):
+        pointcloud.append((radarX, radarY, i, 10, 10))
+        pointcloud.append((radarX, radarY, i+1, 10, 10))
+        pointcloud.append((radarX, radarY, i+2, 10, 10))
+    return pointcloud
 
 def get_color(pointcloud):
     """ 
@@ -352,7 +411,15 @@ def get_pointcloud_from_msg(msg):
     @return: output pointcloud 
     @rtype: numpy array with shape (n, 5)
     """
+    global radarPointCloudList
+    global timer
     pc_list = list(pc2.read_points(msg))
+    if timer:
+        radarPointCloudList = []
+        length, distance = radar_socket_buffer.pop(0)
+        radarPointCloudList = generate_radar_pointcloud(length, distance)
+        timer = False
+    #pc_list.append(radarPointCloudList)
     return np.array(pc_list, 'float32')
 
 def get_pointcloud_list_from_msg(msg):
@@ -1875,6 +1942,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     @param height: input translation value in z direction
     @type: float
     """
+    socket_server_start()
     if config not in ['horizontal', 'tilted']:
         print 'Invalid config input, should be horizontal or tilted'
         return
@@ -1882,7 +1950,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
         bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_curb.bag'
     elif detection_type == 'boundary':
         bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_boundary.bag'
-    output_bag = rosbag.Bag(bag_name, 'w')
+    #output_bag = rosbag.Bag(bag_name, 'w')
 
     if visualize:
         # initialize visualizer
@@ -1890,15 +1958,15 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
         vis.create_window(window_name='point cloud', width=1280, height=960)
         pcd = open3d.PointCloud()
         ctr = vis.get_view_control()
-
     # /image_raw
-    for topic_0, msg_0, t_0 in data.topic_0:
-        output_bag.write(topic_0, msg_0, t=t_0)
+    #for topic_0, msg_0, t_0 in data.topic_0:
+        #output_bag.write(topic_0, msg_0, t=t_0)
 
     rot = rotation_matrix(tilted_angle)
     # /points_raw
     avg_time = 0
     idx = 0
+    start_new_thread(expose_radar_socket,())
     for topic_1, msg_1, t_1 in data.topic_1:
         print 'frame', idx, '/', lidar_data.len_1
         start_time = time.time()
@@ -1908,7 +1976,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
         process_time = (time.time() - start_time)* 1000
         print process_time, "ms"
         avg_time += process_time 
-        output_bag.write(topic_1, msg_1_processed, t=t_1)
+        #output_bag.write(topic_1, msg_1_processed, t=t_1)
         pointcloud_p = get_pointcloud_from_msg(msg_1_processed)
         if visualize:
             color_map = get_color_from_curb(pointcloud_p) 
@@ -1921,7 +1989,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     print "Average time:", avg_time / lidar_data.len_1
     if visualize:
         vis.destroy_window()
-    output_bag.close()
+    #output_bag.close()
 
 def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
     """
@@ -1966,10 +2034,10 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
         idx += 1
     vis.destroy_window()
 
-topics = ['/camera/image_raw', '/points_raw']
-path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
-path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
-result_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/results/'
+topics = ['/camera/image_raw', '/velodyne_points']
+path_0424 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
+path_0517 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
+result_path = '/home/karun/Lidar_curb_detection/source/lidar_based/results/'
 
 parser = argparse.ArgumentParser(description='Run with either \'rosbag\' or \'realtime\' option')
 parser.add_argument('source', type=str, help='From rosbag file or from bin file in real time')
@@ -1985,11 +2053,11 @@ if __name__ == '__main__':
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-        data_name = data_path['tilted'][23]
+        data_name = "kesselRunPCL.bag"
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
+        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=True, tilted_angle=15., height=1.125)
     
     # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:
