@@ -137,7 +137,7 @@ from thread import *
 
 offsetX, offsetY, offsetZ, scaleX, lidarOffsetZ = 24, -14.96295, -8, 0.964308, -50.06731667
 HOST = '127.0.0.1'
-PORT = 12366
+PORT = 12345
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 radar_socket_buffer = []
 timer = False
@@ -154,21 +154,24 @@ def socket_server_start():
     generate_radar_socket_buffer(conn)
 
 def generate_radar_socket_buffer(conn):
+    global radar_socket_buffer
+    global timer
     while True:
-        data = conn.recv(29)
-        try:
-            radar_socket_buffer.append((float(data[0:14]), float(data[15:29])))
-        except:
-            radar_socket_buffer.append((float('0'*14), float('0'*14)))
-        if data == ('9'*29):
-            break
+        if not timer:
+            data = conn.recv(29)
+            try:
+                radar_socket_buffer.append((float(data[0:14]), float(data[15:29])))
+            except:
+                radar_socket_buffer.append((float('0'*14), float('0'*14)))
+            if data == ('9'*29):
+                break
     conn.close()
 
 def expose_radar_socket():
     global timer
     while True:
         timer = True
-        time.sleep(0.35)
+        time.sleep(0.41)
 
 def calculate_scaleZ(rawRadarX):
     if (not np.isnan(rawRadarX) and rawRadarX is not 0):
@@ -417,14 +420,13 @@ def get_pointcloud_from_msg(msg):
     global radarPointCloudList
     global timer
     pc_list = list(pc2.read_points(msg))
-    if timer:
+    if timer and len(radar_socket_buffer):
         radarPointCloudList = []
         length, distance = radar_socket_buffer.pop(0)
         radarPointCloudList = generate_radar_pointcloud(length, distance)
         timer = False
     temp = radarPointCloudList
     radarPointCloudList = []
-    print("temp" + str(temp))
     if (len(temp) > 0):
         if (len(pc_list[0]) > len(temp[0])):
             for tup in temp:
@@ -1958,7 +1960,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     @param height: input translation value in z direction
     @type: float
     """
-    socket_server_start()
+    start_new_thread(socket_server_start, ())
     if config not in ['horizontal', 'tilted']:
         print 'Invalid config input, should be horizontal or tilted'
         return
@@ -1967,14 +1969,14 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     elif detection_type == 'boundary':
         bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_boundary.bag'
     output_bag = rosbag.Bag(bag_name, 'w')
-
+    time.sleep(5)
     if visualize:
         # initialize visualizer
         vis = open3d.Visualizer()
         vis.create_window(window_name='point cloud', width=1280, height=960)
         pcd = open3d.PointCloud()
         ctr = vis.get_view_control()
-
+    time.sleep(15)
     # /image_raw
     #for topic_0, msg_0, t_0 in data.topic_0:
     #    output_bag.write(topic_0, msg_0, t=t_0)
