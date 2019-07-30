@@ -2057,13 +2057,8 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
     vis.destroy_window()
 
 topics = ['/camera/image_raw', '/velodyne_points']
-<<<<<<< HEAD
-path_0424 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
-path_0517 = '/home/rtml/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
-=======
 path_0424 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
 path_0517 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
->>>>>>> 7fbe8e26f41de13563a2ac0fd80d73707a677c35
 result_path = '/home/karun/Lidar_curb_detection/source/lidar_based/results/'
 
 parser = argparse.ArgumentParser(description='Run with either \'rosbag\' or \'realtime\' option')
@@ -2080,11 +2075,7 @@ if __name__ == '__main__':
         # change the number to read different rosbag file
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
-<<<<<<< HEAD
         data_name = 'kesselRun.bag'
-=======
-        data_name = "kesselRunPCL.bag"
->>>>>>> 7fbe8e26f41de13563a2ac0fd80d73707a677c35
         print data_name
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
