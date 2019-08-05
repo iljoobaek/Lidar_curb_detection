@@ -119,10 +119,11 @@ float Boundary_detection::dist_between(const vector<float>& p1, const vector<flo
     return std::sqrt((p2[0]-p1[0])*(p2[0]-p1[0]) + (p2[1]-p1[1])*(p2[1]-p1[1]) + (p2[2]-p1[2])*(p2[2]-p1[2]));
 }
 
-vector<bool> Boundary_detection::continuous_filter(const vector<vector<float>>& pointcloud, const vector<float>& dist_to_origin) {
-    int n = pointcloud.size();
+vector<bool> Boundary_detection::continuous_filter(int scan_id) {
+    int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
+    int n = ed - st;
     vector<bool> is_continuous(n, true);
-    vector<float> thres(dist_to_origin.begin(), dist_to_origin.end());
+    vector<float> thres(this->dist_to_origin.begin()+st, this->dist_to_origin.begin()+ed);
     for (auto& t : thres) t *= THETA_R * 7;
     for (int i = 0; i < n-1; i++) {
         if (dist_between(pointcloud[i], pointcloud[i+1]) > thres[i]) {
@@ -153,14 +154,14 @@ vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, fl
     // might need optimize 
     // normalize ? 
     for (int i = 0; i < n-k; i++) {
-        for (int j = i+1; j < j+k+1; j++) {
+        for (int j = i+1; j <= i+k; j++) {
             direction_vecs_right[i][0] = this->pointcloud[st+j][0] - this->pointcloud[st+i][0]; 
             direction_vecs_right[i][1] = this->pointcloud[st+j][1] - this->pointcloud[st+i][1]; 
             direction_vecs_right[i][2] = this->pointcloud[st+j][2] - this->pointcloud[st+i][2]; 
         }
     }
     for (int i = n-1; i >= k; i--) {
-        for (int j = i-1; j >= j-k-1; j--) {
+        for (int j = i-1; j >= i-k; j--) {
             direction_vecs_left[i][0] = this->pointcloud[st+j][0] - this->pointcloud[st+i][0]; 
             direction_vecs_left[i][1] = this->pointcloud[st+j][1] - this->pointcloud[st+i][1]; 
             direction_vecs_left[i][2] = this->pointcloud[st+j][2] - this->pointcloud[st+i][2]; 
@@ -172,9 +173,36 @@ vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, fl
     return angles;
 }
 
-vector<bool> Boundary_detection::local_min_of_direction_change(int scan_id) {
+vector<bool> get_local_min(const vector<float>& vec) {
+    vector<int> first_derivative(vec.size()-1);
+    for (int i = 0; i < first_derivative.size(); i++) {
+        auto diff = vec[i+1] - vec[i];
+        if (diff > 0.0f) first_derivative[i] = 1;
+        else if (diff < 0.0f) first_derivative[i] = -1;
+        else first_derivative[i] = 0;
+    }
+    vector<bool> second_derivative(first_derivative.size()-1, false);
+    for (int i = 0; i < second_derivative.size(); i++) {
+        auto diff = first_derivative[i+1] - first_derivative[i];
+        if (diff > 0) second_derivative[i] = true;
+    }
+    second_derivative.insert(second_derivative.begin(), false);
+    second_derivative.push_back(false);
+    return second_derivative;
+}
 
-    return {};
+vector<bool> Boundary_detection::local_min_of_direction_change(int scan_id) {
+    auto direction = direction_change_filter(scan_id, 8);
+    vector<bool> direction_change_local_min(direction.size());
+    vector<bool> direction_change(direction.size(), false); 
+    for (int i = 0; i < direction.size(); i++) {
+        if (direction[i] < 150.0f) direction_change[i] = true;
+    }
+    vector<bool> local_min = get_local_min(direction);
+    for (int i = 0; i < direction.size(); i++) {
+        direction_change_local_min[i] = direction_change[i] && local_min[i];
+    }
+    return direction_change_local_min;
 }
 
 vector<int> Boundary_detection::elevation_filter(int scan_id) {
@@ -203,21 +231,21 @@ vector<int> Boundary_detection::elevation_filter(int scan_id) {
 
 template<typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g) {
-  int const nf = f.size();
-  int const ng = g.size();
-  int const n  = nf + ng - 1;
-  std::vector<T> out(n, T());
-  for(auto i(0); i < n; ++i) {
-    int const jmn = (i >= ng - 1)? i - (ng - 1) : 0;
-    int const jmx = (i <  nf - 1)? i            : nf - 1;
-    for(auto j(jmn); j <= jmx; ++j) {
-      out[i] += (f[j] * g[i - j]);
+    int const nf = f.size();
+    int const ng = g.size();
+    int const n  = nf + ng - 1;
+    std::vector<T> out(n, T());
+    for(auto i(0); i < n; ++i) {
+        int const jmn = (i >= ng - 1)? i - (ng - 1) : 0;
+        int const jmx = (i <  nf - 1)? i            : nf - 1;
+        for(auto j(jmn); j <= jmx; ++j) {
+            out[i] += (f[j] * g[i - j]);
+        }
     }
-  }
-  return out; 
+    return out; 
 }
 
-void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<bool>& elevation, vector<bool>& edge_start, vector<bool>& edge_end) {
+void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
     int k = 7;
@@ -240,13 +268,110 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<bo
 }
 
 vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
+    int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
+    int n = ed - st;
+    if (n - (2 * k) < 0) return vector<bool>(n, false); 
+    vector<bool> is_boundary(n, false); 
 
+    // elevation filter
+    auto is_elevating = elevation_filter(31);
+    vector<bool> edge_start(is_elevating.size(), false); 
+    vector<bool> edge_end(is_elevating.size(), false);
+    edge_filter_from_elevation(31, is_elevating, edge_start, edge_end);
+
+    // local min of direction change
+    auto is_direction_change = local_min_of_direction_change(scan_id);
+
+    // continuous filter
+    auto is_continuous = continuous_filter(scan_id);
+
+    if (scan_id % 2 == 0) { // left scan
+        int i = n - 1;
+        bool found = false;
+        int cur_start = 0, cur_end = 0, cur_height = 0;
+        float missed_rate, missed = 0.0f;
+        while (i >= 0) {
+            if (is_direction_change[i] && edge_start[i]) {
+                cur_start = i;
+                missed = 0.0f;
+                while (i - 1 >= 0) {
+                    if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT) {
+                        cur_start = i;
+                    }
+                    cur_end = i;
+                    if (!is_elevating[i]) missed += 1.0f;
+                    missed_rate = missed / (cur_start - cur_end + 1);
+                    cur_height = this->pointcloud[st+cur_end][2] - this->pointcloud[st+cur_start][2];
+                    if (missed > 10 && missed_rate > 0.3) break;
+                    if (cur_height > 0.05 && edge_end[i]) {
+                        for (int j = cur_end; j <= cur_start; j++) {
+                            is_boundary[j] = true;
+                        }
+                        found = true;
+                        break;
+                    }
+                    if (cur_height > 0.1) {
+                        for (int j = cur_end; j <= cur_start; j++) {
+                            is_boundary[j] = true;
+                        }
+                        found = true;
+                        break;
+                    }
+                    i--;
+                }
+            }
+            i--;
+            if (found) break;
+        }    
+    }
+    else {
+        int i = 0;
+        bool found = false;
+        int cur_start = 0, cur_end = 0, cur_height = 0;
+        float missed_rate, missed = 0.0f;
+        while (i < n) {
+            if (is_direction_change[i] && edge_start[i]) {
+                cur_start = i;
+                missed = 0.0f;
+                while (i + 1 < n) {
+                    if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT) {
+                        cur_start = i;
+                    }
+                    cur_end = i;
+                    if (!is_elevating[i]) missed += 1.0f;
+                    missed_rate = missed / (cur_start - cur_end + 1);
+                    cur_height = this->pointcloud[st+cur_end][2] - this->pointcloud[st+cur_start][2];
+                    if (missed > 10 && missed_rate > 0.3) break;
+                    if (cur_height > 0.05 && edge_end[i]) {
+                        for (int j = cur_start; j <= cur_end; j++) {
+                            is_boundary[j] = true;
+                        }
+                        found = true;
+                        break;
+                    }
+                    if (cur_height > 0.1) {
+                        for (int j = cur_start; j <= cur_end; j++) {
+                            is_boundary[j] = true;
+                        }
+                        found = true;
+                        break;
+                    }
+                    i++;
+                }
+            }
+            i++;
+            if (found) break;
+        }    
+    }
+    return is_boundary;
 }
 
 vector<bool> Boundary_detection::run_detection() {
     cout << "Run boundary detection...\n";
-    auto elevation = elevation_filter(31);
-    
+    rearrange_pointcloud();
+    for (int i = 0; i < 32; i++) {
+        auto res = find_boundary_from_half_scan(i, 8);
+    }
     return {};
 }
 

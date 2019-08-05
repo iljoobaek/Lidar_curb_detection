@@ -9,6 +9,7 @@
 
 #define PI 3.14159265
 #define THETA_R 0.00356999
+#define MIN_CURB_HEIGHT 0.05
 
 using std::cout;
 using std::endl;
@@ -47,12 +48,12 @@ public:
     
     float dist_between(const vector<float>& p1, const vector<float>& p2);
     vector<float> get_dist_to_origin();
-    vector<bool> continuous_filter(const vector<vector<float>>& pointcloud, const vector<float>& dist_to_origin);
+    vector<bool> continuous_filter(int scan_id);
     float get_angle(const vector<float>& v1, const vector<float>& v2);
     vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
     vector<bool> local_min_of_direction_change(int scan_id);
     vector<int> elevation_filter(int scan_id);
-    void edge_filter_from_elevation(int scan_id, const vector<bool>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
+    void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
     vector<bool> find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection();
 

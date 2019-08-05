@@ -9,8 +9,12 @@ int main( int argc, char* argv[] ) {
     cout << "Test Eigen and c++ computation" << endl; 
 
     string filename = "image.bin";
+    high_resolution_clock::time_point t1 = high_resolution_clock::now();
     Boundary_detection *detection = new Boundary_detection(filename, 0, 15.0, 1.125);
     vector<bool> result = detection->run_detection();    
+    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+    auto duration = duration_cast<milliseconds>(t2 - t1).count();
+    cout << duration << endl;
     //detection->print_pointcloud(detection->get_pointcloud());
     
     // string folder = "test/";
