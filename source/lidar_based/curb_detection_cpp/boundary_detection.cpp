@@ -368,13 +368,39 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
 
 vector<bool> Boundary_detection::run_detection() {
     cout << "Run boundary detection...\n";
-    rearrange_pointcloud();
-    for (int i = 0; i < 32; i++) {
-        auto res = find_boundary_from_half_scan(i, 8);
+    if (this->directory == "test1/") {
+        for (int i = 0; i < 1171; i++) {
+            high_resolution_clock::time_point t1 = high_resolution_clock::now();
+            
+            string filename = this->directory + std::to_string(i) + ".bin";
+            this->pointcloud.clear();
+            this->pointcloud = read_bin(filename);
+            this->dist_to_origin.clear();
+            this->dist_to_origin = get_dist_to_origin();
+            rearrange_pointcloud();
+            for (int i = 0; i < 32; i++) {
+                auto res = find_boundary_from_half_scan(i, 8);
+            }
+            high_resolution_clock::time_point t2 = high_resolution_clock::now();
+            auto duration = duration_cast<milliseconds>(t2 - t1).count();
+            cout << duration << endl;
+        }
+    }
+    else if (this->directory == "test2/") {
+        for (int i = 0; i < 1; i++) {
+            string filename = this->directory + std::to_string(i) + ".bin";
+            this->pointcloud.clear();
+            this->pointcloud = read_bin(filename);
+            this->dist_to_origin.clear();
+            this->dist_to_origin = get_dist_to_origin();
+            rearrange_pointcloud();
+            for (int i = 0; i < 32; i++) {
+                auto res = find_boundary_from_half_scan(i, 8);
+            }
+        }
     }
     return {};
 }
-
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointcloud) {
     vector<int> count(16, 0);

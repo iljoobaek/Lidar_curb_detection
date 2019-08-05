@@ -19,19 +19,15 @@ using namespace std::chrono;
 
 class Boundary_detection {
 public:
-    Boundary_detection(string fn, int id, float tilted_angle, float sensor_height): filename(fn), frame_id(id), num_of_scan(16) {
+    Boundary_detection(string dir, int id, float tilted_angle, float sensor_height): directory(dir), frame_id(id), num_of_scan(16) {
         this->ranges = vector<vector<int>>(32, vector<int>(2));
         this->tilted_angle = tilted_angle;
         this->sensor_height = sensor_height;
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
-        this->pointcloud = read_bin(fn);
-        this->dist_to_origin = get_dist_to_origin();
         //rotate_and_translate();
         // max_height_filter(0.45);
         
-        // rearrange_pointcloud_sort();
-        rearrange_pointcloud();
         // for (int i = 0; i < ranges.size(); i++) {
         //     cout << i << ": " << ranges[i][0] << " " << ranges[i][1] << endl;
         // }
@@ -62,7 +58,7 @@ public:
     vector<vector<float>>& get_pointcloud();
 
 private:
-    string filename;
+    string directory;
     int frame_id;
     int num_of_scan;
     float tilted_angle;
