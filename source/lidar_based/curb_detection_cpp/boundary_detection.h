@@ -25,7 +25,6 @@ public:
         this->sensor_height = sensor_height;
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
-        //rotate_and_translate();
         // max_height_filter(0.45);
         
         // for (int i = 0; i < ranges.size(); i++) {

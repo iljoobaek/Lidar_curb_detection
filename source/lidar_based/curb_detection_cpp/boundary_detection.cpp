@@ -12,14 +12,14 @@ vector<vector<float>> Boundary_detection::read_bin(string filename) {
     for (int32_t i = 0; i < num; i++) {
         float dist = std::sqrt((*px)*(*px) + (*py)*(*py) + (*pz)*(*pz));
         float theta = std::atan2(*py, *px) * 180.0f / PI;
-        // cout << *px << " " << *py << " " << *pz << " " << *pi << " " << *pr << " " << theta << endl;
-        if (dist > 0.9f) pointcloud.push_back({*px, *py, *pz, *pi, *pr, dist, theta});
+        if (dist > 0.9f && *px >= 0.0f) pointcloud.push_back({*px, *py, *pz, *pi, *pr, dist, theta});
         px += 5, py += 5, pz += 5, pi += 5, pr += 5;
     }
     for (int i = 0; i < 10; i++) 
         cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
     for (int i = pointcloud.size()-10; i < pointcloud.size(); i++) 
         cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
+    cout << "---------------- Raw data before rotate and translate -----------------\n";
     fclose(stream);
     return pointcloud;
 }
@@ -31,25 +31,29 @@ void Boundary_detection::rotate_and_translate() {
     // [0,            1,          0]
     // [-sin(theta),  0, cos(theta)]
     float theta = this->tilted_angle * PI / 180.0f;
-    cout << std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
+    cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
     cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
-    cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << "\n";
+    cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
     for (auto& point : this->pointcloud) {
-        int x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
-        int y = y;
-        int z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
+        float x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
+        float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
         point[0] = x;
-        point[1] = y;
         point[2] = z;
     }
+    for (int i = 0; i < 10; i++) 
+        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
+    for (int i = pointcloud.size()-10; i < pointcloud.size(); i++) 
+        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
 }
 
 void Boundary_detection::max_height_filter(float max_height) {
-    auto iter = this->pointcloud.begin(); 
-    while (iter != this->pointcloud.end()) {
-        if ((*iter)[2] > max_height) iter = this->pointcloud.erase(iter);
-        else iter++;
+    // cout << "size before: " << this->pointcloud.size() << "\n"; 
+    int cur = 0;
+    for (int i = 0; i < this->pointcloud.size(); i++) {
+        if (this->pointcloud[i][2] < max_height) this->pointcloud[cur++] = this->pointcloud[i];
     }
+    this->pointcloud.erase(this->pointcloud.begin()+cur, this->pointcloud.end());
+    // cout << "size after : " << this->pointcloud.size() << "\n"; 
 }
 
 void Boundary_detection::reorder_pointcloud() {
@@ -270,14 +274,15 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<in
 vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
+    if (n == 0) return {};
     if (n - (2 * k) < 0) return vector<bool>(n, false); 
     vector<bool> is_boundary(n, false); 
 
     // elevation filter
-    auto is_elevating = elevation_filter(31);
+    auto is_elevating = elevation_filter(scan_id);
     vector<bool> edge_start(is_elevating.size(), false); 
     vector<bool> edge_end(is_elevating.size(), false);
-    edge_filter_from_elevation(31, is_elevating, edge_start, edge_end);
+    edge_filter_from_elevation(scan_id, is_elevating, edge_start, edge_end);
 
     // local min of direction change
     auto is_direction_change = local_min_of_direction_change(scan_id);
@@ -339,7 +344,7 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
                     }
                     cur_end = i;
                     if (!is_elevating[i]) missed += 1.0f;
-                    missed_rate = missed / (cur_start - cur_end + 1);
+                    missed_rate = missed / (cur_end - cur_start + 1);
                     cur_height = this->pointcloud[st+cur_end][2] - this->pointcloud[st+cur_start][2];
                     if (missed > 10 && missed_rate > 0.3) break;
                     if (cur_height > 0.05 && edge_end[i]) {
@@ -369,7 +374,8 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
 vector<bool> Boundary_detection::run_detection() {
     cout << "Run boundary detection...\n";
     if (this->directory == "test1/") {
-        for (int i = 0; i < 1171; i++) {
+        // for (int i = 0; i < 1171; i++) {
+        for (int i = 250; i < 251; i++) {
             high_resolution_clock::time_point t1 = high_resolution_clock::now();
             
             string filename = this->directory + std::to_string(i) + ".bin";
@@ -377,6 +383,8 @@ vector<bool> Boundary_detection::run_detection() {
             this->pointcloud = read_bin(filename);
             this->dist_to_origin.clear();
             this->dist_to_origin = get_dist_to_origin();
+            rotate_and_translate();
+            max_height_filter(.45);
             rearrange_pointcloud();
             for (int i = 0; i < 32; i++) {
                 auto res = find_boundary_from_half_scan(i, 8);
@@ -393,6 +401,8 @@ vector<bool> Boundary_detection::run_detection() {
             this->pointcloud = read_bin(filename);
             this->dist_to_origin.clear();
             this->dist_to_origin = get_dist_to_origin();
+            rotate_and_translate();
+            max_height_filter(.45);
             rearrange_pointcloud();
             for (int i = 0; i < 32; i++) {
                 auto res = find_boundary_from_half_scan(i, 8);
