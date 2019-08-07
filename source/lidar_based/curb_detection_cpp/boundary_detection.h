@@ -74,5 +74,8 @@ private:
     vector<bool> is_continuous;
     vector<bool> is_elevating;
     vector<bool> is_changing_angle;
+    vector<bool> is_local_min;
+    vector<bool> is_edge_start;
+    vector<bool> is_edge_end;
     vector<vector<int>> ranges;
 };
