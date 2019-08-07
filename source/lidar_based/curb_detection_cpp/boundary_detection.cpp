@@ -261,7 +261,6 @@ vector<int> Boundary_detection::elevation_filter(int scan_id) {
     }
     vector<int> filter({1,1,1,1,1,1,1,1,1});
     auto res = conv(is_elevate, filter);
-    cout << res.size() << " " << is_elevate.size() << "\n";
     for (int i = 0; i < is_elevate.size(); i++) {
         if (res[i+4] >= 4) is_elevate[i] = 1;
         else is_elevate[i] = 0;
@@ -289,17 +288,22 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<in
     auto edge_start_cnt = conv(elevation, f_start);
     auto edge_end_cnt = conv(elevation, f_end);
     for (int i = 0; i < n; i++) {
-        if (edge_start_cnt[i+k] >= 2) edge_start[i] = true;
-        if (edge_end_cnt[i+k] >= 6) edge_end[i] = true;
+        if (edge_start_cnt[i+k] >= 2) {
+            edge_start[i] = true;
+            this->is_edge_start[st+i] = true;
+        }
+        if (edge_end_cnt[i+k] >= 6) {
+            edge_end[i] = true;
+            this->is_edge_end[st+i] = true;
+        }
     }
 }
 
-vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
+void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
-    if (n == 0) return {};
-    if (n - (2 * k) < 0) return vector<bool>(n, false); 
-    // vector<bool> is_boundary(n, false); 
+    if (n == 0) return;
+    if (n - (2 * k) < 0) return; 
 
     // elevation filter
     auto is_elevating = elevation_filter(scan_id);
@@ -313,10 +317,11 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
     // continuous filter
     auto is_continuous = continuous_filter(scan_id);
 
+    bool found = false;
     if (scan_id % 2 == 0) { // left scan
         int i = n - 1;
-        bool found = false;
-        int cur_start = 0, cur_end = 0, cur_height = 0;
+        int cur_start = 0, cur_end = 0;
+        float cur_height = 0;
         float missed_rate, missed = 0.0f;
         while (i >= 0) {
             if (is_direction_change[i] && edge_start[i]) {
@@ -354,8 +359,8 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
     }
     else {
         int i = 0;
-        bool found = false;
-        int cur_start = 0, cur_end = 0, cur_height = 0;
+        int cur_start = 0, cur_end = 0;
+        float cur_height = 0;
         float missed_rate, missed = 0.0f;
         while (i < n) {
             if (is_direction_change[i] && edge_start[i]) {
@@ -391,7 +396,6 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
             if (found) break;
         }    
     }
-    return {};
 }
 
 vector<bool> Boundary_detection::run_detection(bool vis) {
@@ -409,7 +413,6 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
 
     if (this->directory == "test1/") {
         for (int i = 0; i < 1171; i++) {
-        // for (int i = 250; i < 251; i++) {
             high_resolution_clock::time_point t1 = high_resolution_clock::now();
             
             string filename = this->directory + std::to_string(i) + ".bin";
@@ -419,14 +422,13 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             rearrange_pointcloud();
             reset();
             for (int i = 0; i < 32; i++) {
-                auto res = find_boundary_from_half_scan(i, 8);
+                find_boundary_from_half_scan(i, 8);
             }
 
             high_resolution_clock::time_point t2 = high_resolution_clock::now();
             auto duration = duration_cast<milliseconds>(t2 - t1).count();
             cout << duration << endl;
             if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
-            // if (vis) update_viewer(this->pointcloud, this->is_elevating, viewer);
         }
     }
     else if (this->directory == "test2/") {
@@ -438,10 +440,9 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             rearrange_pointcloud();
             reset();
             for (int i = 0; i < 32; i++) {
-                auto res = find_boundary_from_half_scan(i, 8);
+                find_boundary_from_half_scan(i, 8);
             }
             if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
-            // if (vis) update_viewer(this->pointcloud, this->is_elevating, viewer);
         }
     }
     return {};

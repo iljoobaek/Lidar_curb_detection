@@ -52,7 +52,7 @@ public:
     vector<bool> local_min_of_direction_change(int scan_id);
     vector<int> elevation_filter(int scan_id);
     void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
-    vector<bool> find_boundary_from_half_scan(int scan_id, int k);
+    void find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection(bool vis=false);
 
     void print_pointcloud(const vector<vector<float>>& pointcloud);
