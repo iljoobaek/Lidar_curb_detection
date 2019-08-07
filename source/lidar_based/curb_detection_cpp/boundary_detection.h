@@ -7,6 +7,9 @@
 
 #include <Eigen/Dense>
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/viz.hpp>
+
 #define PI 3.14159265
 #define THETA_R 0.00356999
 #define MIN_CURB_HEIGHT 0.05
@@ -50,11 +53,13 @@ public:
     vector<int> elevation_filter(int scan_id);
     void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
     vector<bool> find_boundary_from_half_scan(int scan_id, int k);
-    vector<bool> run_detection();
+    vector<bool> run_detection(bool vis=false);
 
     void print_pointcloud(const vector<vector<float>>& pointcloud);
-    
+
+    void reset();    
     vector<vector<float>>& get_pointcloud();
+    vector<bool>& get_result();
 
 private:
     string directory;
@@ -65,5 +70,9 @@ private:
     vector<float> angles;
     vector<float> dist_to_origin;
     vector<vector<float>> pointcloud;
+    vector<bool> is_boundary;
+    vector<bool> is_continuous;
+    vector<bool> is_elevating;
+    vector<bool> is_changing_angle;
     vector<vector<int>> ranges;
 };

@@ -1,5 +1,39 @@
 #include "boundary_detection.h"
 
+template<typename T>
+std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g) {
+    int const nf = f.size();
+    int const ng = g.size();
+    int const n  = nf + ng - 1;
+    std::vector<T> out(n, T());
+    for(auto i(0); i < n; ++i) {
+        int const jmn = (i >= ng - 1)? i - (ng - 1) : 0;
+        int const jmx = (i <  nf - 1)? i            : nf - 1;
+        for(auto j(jmn); j <= jmx; ++j) {
+            out[i] += (f[j] * g[i - j]);
+        }
+    }
+    return out; 
+}
+
+void update_viewer(const vector<vector<float>>& pointcloud, const vector<bool>& result, cv::viz::Viz3d viewer) {
+    std::vector<cv::Vec3f> buffer(pointcloud.size());
+    std::vector<cv::Vec3b> colors(pointcloud.size());
+    for (int i = 0; i < pointcloud.size(); i++) {
+        buffer[i] = cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]);
+        if (result[i]) colors[i] = {0,0,255};
+        else colors[i] = {255,255,255};
+    } 
+    // Create Widget
+    cv::Mat cloudMat = cv::Mat(static_cast<int>(buffer.size()), 1, CV_32FC3, &buffer[0]);
+    cv::Mat colorMat = cv::Mat(static_cast<int>(colors.size()), 1, CV_8UC3, &colors[0]);
+    cv::viz::WCloud cloud(cloudMat, colorMat);
+    // Show Point Cloud
+    viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
+    viewer.showWidget("Cloud", cloud);
+    viewer.spinOnce();
+}
+
 vector<vector<float>> Boundary_detection::read_bin(string filename) {
     vector<vector<float>> pointcloud;
     int32_t num = 1000000;
@@ -8,19 +42,14 @@ vector<vector<float>> Boundary_detection::read_bin(string filename) {
 
     FILE *stream = fopen(filename.c_str(), "rb");
     num = fread(data, sizeof(float), num, stream) / 5;
-    cout << num << endl;
     for (int32_t i = 0; i < num; i++) {
         float dist = std::sqrt((*px)*(*px) + (*py)*(*py) + (*pz)*(*pz));
         float theta = std::atan2(*py, *px) * 180.0f / PI;
         if (dist > 0.9f && *px >= 0.0f) pointcloud.push_back({*px, *py, *pz, *pi, *pr, dist, theta});
         px += 5, py += 5, pz += 5, pi += 5, pr += 5;
     }
-    for (int i = 0; i < 10; i++) 
-        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
-    for (int i = pointcloud.size()-10; i < pointcloud.size(); i++) 
-        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
-    cout << "---------------- Raw data before rotate and translate -----------------\n";
     fclose(stream);
+    cout << "Read in " << pointcloud.size() << " points\n"; 
     return pointcloud;
 }
 
@@ -31,19 +60,15 @@ void Boundary_detection::rotate_and_translate() {
     // [0,            1,          0]
     // [-sin(theta),  0, cos(theta)]
     float theta = this->tilted_angle * PI / 180.0f;
-    cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
-    cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
-    cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
+    // cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
+    // cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
+    // cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
     for (auto& point : this->pointcloud) {
         float x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
         float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
         point[0] = x;
         point[2] = z;
     }
-    for (int i = 0; i < 10; i++) 
-        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
-    for (int i = pointcloud.size()-10; i < pointcloud.size(); i++) 
-        cout << pointcloud[i][0] << " " << pointcloud[i][1] << " " << pointcloud[i][2] << " " << pointcloud[i][3] << " " << pointcloud[i][4] << " " << pointcloud[i][6] << endl;
 }
 
 void Boundary_detection::max_height_filter(float max_height) {
@@ -130,9 +155,11 @@ vector<bool> Boundary_detection::continuous_filter(int scan_id) {
     vector<float> thres(this->dist_to_origin.begin()+st, this->dist_to_origin.begin()+ed);
     for (auto& t : thres) t *= THETA_R * 7;
     for (int i = 0; i < n-1; i++) {
-        if (dist_between(pointcloud[i], pointcloud[i+1]) > thres[i]) {
+        if (dist_between(this->pointcloud[st+i], this->pointcloud[st+i+1]) > thres[i]) {
             is_continuous[i] = false;
             is_continuous[i+1] = false;
+            this->is_continuous[st+i] = false;
+            this->is_continuous[st+i+1] = false;
         }
     }
     return is_continuous;
@@ -143,7 +170,7 @@ float Boundary_detection::get_angle(const vector<float>& v1, const vector<float>
     float dot_product = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
     float mag_1 = std::sqrt(v1[0]*v1[0] + v1[1]*v1[1] + v1[2]*v1[2]); 
     float mag_2 = std::sqrt(v2[0]*v2[0] + v2[1]*v2[1] + v2[2]*v2[2]); 
-    return std::acos(dot_product / (mag_1 * mag_2));
+    return std::acos(dot_product / (mag_1 * mag_2)) * 180.0 / PI;
 }
 
 vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, float angle_thres /* =150.0f */) {
@@ -173,6 +200,7 @@ vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, fl
     }
     for (int i = k; i < n-k; i++) {
         angles[i] = get_angle(direction_vecs_left[i], direction_vecs_right[i]);
+        if (angles[i] < 150.0) this->is_changing_angle[st+i] = true;
     } 
     return angles;
 }
@@ -233,22 +261,6 @@ vector<int> Boundary_detection::elevation_filter(int scan_id) {
     return is_elevating;
 }
 
-template<typename T>
-std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g) {
-    int const nf = f.size();
-    int const ng = g.size();
-    int const n  = nf + ng - 1;
-    std::vector<T> out(n, T());
-    for(auto i(0); i < n; ++i) {
-        int const jmn = (i >= ng - 1)? i - (ng - 1) : 0;
-        int const jmx = (i <  nf - 1)? i            : nf - 1;
-        for(auto j(jmn); j <= jmx; ++j) {
-            out[i] += (f[j] * g[i - j]);
-        }
-    }
-    return out; 
-}
-
 void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
@@ -276,7 +288,7 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
     int n = ed - st;
     if (n == 0) return {};
     if (n - (2 * k) < 0) return vector<bool>(n, false); 
-    vector<bool> is_boundary(n, false); 
+    // vector<bool> is_boundary(n, false); 
 
     // elevation filter
     auto is_elevating = elevation_filter(scan_id);
@@ -310,14 +322,14 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
                     if (missed > 10 && missed_rate > 0.3) break;
                     if (cur_height > 0.05 && edge_end[i]) {
                         for (int j = cur_end; j <= cur_start; j++) {
-                            is_boundary[j] = true;
+                            this->is_boundary[st+j] = true;
                         }
                         found = true;
                         break;
                     }
                     if (cur_height > 0.1) {
                         for (int j = cur_end; j <= cur_start; j++) {
-                            is_boundary[j] = true;
+                            this->is_boundary[st+j] = true;
                         }
                         found = true;
                         break;
@@ -349,14 +361,14 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
                     if (missed > 10 && missed_rate > 0.3) break;
                     if (cur_height > 0.05 && edge_end[i]) {
                         for (int j = cur_start; j <= cur_end; j++) {
-                            is_boundary[j] = true;
+                            this->is_boundary[st+j] = true;
                         }
                         found = true;
                         break;
                     }
                     if (cur_height > 0.1) {
                         for (int j = cur_start; j <= cur_end; j++) {
-                            is_boundary[j] = true;
+                            this->is_boundary[st+j] = true;
                         }
                         found = true;
                         break;
@@ -368,48 +380,69 @@ vector<bool> Boundary_detection::find_boundary_from_half_scan(int scan_id, int k
             if (found) break;
         }    
     }
-    return is_boundary;
+    return {};
 }
 
-vector<bool> Boundary_detection::run_detection() {
-    cout << "Run boundary detection...\n";
+vector<bool> Boundary_detection::run_detection(bool vis) {
+    // Create Viewer
+    cv::viz::Viz3d viewer( "Velodyne" );
+    // Register Keyboard Callback
+    viewer.registerKeyboardCallback([]( const cv::viz::KeyboardEvent& event, void* cookie ){
+        // Close Viewer
+        if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
+            static_cast<cv::viz::Viz3d*>( cookie )->close();
+        }
+        }
+        , &viewer
+    );
+
     if (this->directory == "test1/") {
-        // for (int i = 0; i < 1171; i++) {
-        for (int i = 250; i < 251; i++) {
+        for (int i = 0; i < 1171; i++) {
+        // for (int i = 250; i < 251; i++) {
             high_resolution_clock::time_point t1 = high_resolution_clock::now();
             
             string filename = this->directory + std::to_string(i) + ".bin";
-            this->pointcloud.clear();
             this->pointcloud = read_bin(filename);
-            this->dist_to_origin.clear();
-            this->dist_to_origin = get_dist_to_origin();
             rotate_and_translate();
             max_height_filter(.45);
             rearrange_pointcloud();
+            this->dist_to_origin = get_dist_to_origin();
+            reset();
             for (int i = 0; i < 32; i++) {
                 auto res = find_boundary_from_half_scan(i, 8);
             }
             high_resolution_clock::time_point t2 = high_resolution_clock::now();
             auto duration = duration_cast<milliseconds>(t2 - t1).count();
             cout << duration << endl;
+            // if (vis) update_viewer(this->pointcloud, this->is_changing_angle, viewer);
+            if (vis) update_viewer(this->pointcloud, this->is_continuous, viewer);
         }
     }
     else if (this->directory == "test2/") {
         for (int i = 0; i < 1; i++) {
             string filename = this->directory + std::to_string(i) + ".bin";
-            this->pointcloud.clear();
             this->pointcloud = read_bin(filename);
-            this->dist_to_origin.clear();
-            this->dist_to_origin = get_dist_to_origin();
             rotate_and_translate();
             max_height_filter(.45);
             rearrange_pointcloud();
+            this->dist_to_origin = get_dist_to_origin();
+            reset();
             for (int i = 0; i < 32; i++) {
                 auto res = find_boundary_from_half_scan(i, 8);
             }
+            // if (vis) update_viewer(this->pointcloud, this->is_changing_angle, viewer);
+            if (vis) update_viewer(this->pointcloud, this->is_continuous, viewer);
         }
     }
     return {};
+}
+
+void Boundary_detection::reset() {
+        this->is_boundary = vector<bool>(this->pointcloud.size(), false);
+        this->is_continuous = vector<bool>(this->pointcloud.size(), true);
+        this->is_elevating = vector<bool>(this->pointcloud.size(), false);
+        this->is_changing_angle = vector<bool>(this->pointcloud.size(), false);
+
 }
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointcloud) {
@@ -427,4 +460,8 @@ void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointclou
 
 vector<vector<float>>& Boundary_detection::get_pointcloud() {
     return this->pointcloud; 
+}
+
+vector<bool>& Boundary_detection::get_result() {
+    return this->is_boundary;
 }
