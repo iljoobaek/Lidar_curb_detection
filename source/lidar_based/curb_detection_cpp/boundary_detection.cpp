@@ -72,13 +72,11 @@ void Boundary_detection::rotate_and_translate() {
 }
 
 void Boundary_detection::max_height_filter(float max_height) {
-    // cout << "size before: " << this->pointcloud.size() << "\n"; 
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++) {
         if (this->pointcloud[i][2] < max_height) this->pointcloud[cur++] = this->pointcloud[i];
     }
     this->pointcloud.erase(this->pointcloud.begin()+cur, this->pointcloud.end());
-    // cout << "size after : " << this->pointcloud.size() << "\n"; 
 }
 
 void Boundary_detection::reorder_pointcloud() {
@@ -132,16 +130,27 @@ void Boundary_detection::rearrange_pointcloud_sort() {
             else return p1[4] < p2[4];});
 }
 
-void Boundary_detection::pointcloud_preprocessing() {
-    rotate_and_translate();
-    max_height_filter(this->sensor_height);
-}
-
 vector<float> Boundary_detection::get_dist_to_origin() {
     vector<float> dist(this->pointcloud.size());
     for (int i = 0; i < dist.size(); i++) 
         dist[i] = std::sqrt(pointcloud[i][0]*pointcloud[i][0] + pointcloud[i][1]*pointcloud[i][1] + pointcloud[i][2]*pointcloud[i][2]); 
     return dist;
+}
+
+vector<float> Boundary_detection::get_theoretical_dist() {
+    vector<float> dist(this->num_of_scan);
+    for (int i = 0; i < dist.size(); i++) {
+        float angle = -(this->angles[i] - this->tilted_angle) * PI / 180.0;
+        dist[i] = this->sensor_height / std::sin(angle);
+    }
+    return dist;
+}
+
+void Boundary_detection::pointcloud_preprocessing() {
+    rotate_and_translate();
+    max_height_filter(.45);
+    rearrange_pointcloud();
+    reset();
 }
 
 float Boundary_detection::dist_between(const vector<float>& p1, const vector<float>& p2) {
@@ -299,6 +308,57 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<in
     }
 }
 
+vector<bool> Boundary_detection::obstacle_extraction(int scan_id) {
+    int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
+    int n = ed - st;
+    vector<bool> is_obstacle(n, false);
+    float height_thres = 0.3, dist = 0.0f;
+    int ring = scan_id / 2;
+    if (scan_id % 2 == 0) { // left scan
+        int i = n - 1, cur_start = -1;
+        while (i >= 0) {
+            if (i == n - 1 && this->pointcloud[st+i][2] > height_thres) {
+                cur_start = i;
+                dist = this->theoretical_dist[ring];
+            }
+            else if (cur_start == -1 && i + 1 < n && !this->is_continuous[i+1] && !this->is_continuous[i] && this->dist_to_origin[i+1] > this->dist_to_origin[i]) {
+                cur_start = i;
+                dist = this->dist_to_origin[i+1];
+            }
+            else if (cur_start != -1 && this->dist_to_origin[i] > dist) {
+                for (int j = st+i+1; j <= st+cur_start; j++) this->is_obstacle[j] = true;
+                cur_start = -1;
+            }
+            if (i == 0 && cur_start != -1) {
+                for (int j = st+i+1; j <= st+cur_start; j++) this->is_obstacle[j] = true;
+            }
+            i--; 
+        }
+    }
+    else {
+        int i = 0, cur_start = -1;
+        while (i < n) {
+            if (i == 0 && this->pointcloud[st+i][2] > height_thres) {
+                cur_start = i;
+                dist = this->theoretical_dist[ring];
+            }
+            else if (cur_start == -1 && i - 1 >= 0 && !this->is_continuous[i-1] && !this->is_continuous[i] && this->dist_to_origin[i-1] > this->dist_to_origin[i]) {
+                cur_start = i;
+                dist = this->dist_to_origin[i-1];
+            }
+            else if (cur_start != -1 && this->dist_to_origin[i] > dist) {
+                for (int j = st+cur_start; j <= st+i; j++) this->is_obstacle[j] = true;
+                cur_start = -1;
+            }
+            if (i == n - 1 && cur_start != -1) {
+                for (int j = st+cur_start; j <= st+i; j++) this->is_obstacle[j] = true;
+            }
+            i++; 
+        }
+    }
+    return is_obstacle;
+}
+
 void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
@@ -316,6 +376,8 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
 
     // continuous filter
     auto is_continuous = continuous_filter(scan_id);
+
+    auto is_obstacle = obstacle_extraction(scan_id);
 
     bool found = false;
     if (scan_id % 2 == 0) { // left scan
@@ -417,9 +479,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             
             string filename = this->directory + std::to_string(i) + ".bin";
             this->pointcloud = read_bin(filename);
-            rotate_and_translate();
-            max_height_filter(.45);
-            rearrange_pointcloud();
+            pointcloud_preprocessing();
             reset();
             for (int i = 0; i < 32; i++) {
                 find_boundary_from_half_scan(i, 8);
@@ -435,9 +495,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
         for (int i = 0; i < 1; i++) {
             string filename = this->directory + std::to_string(i) + ".bin";
             this->pointcloud = read_bin(filename);
-            rotate_and_translate();
-            max_height_filter(.45);
-            rearrange_pointcloud();
+            pointcloud_preprocessing();
             reset();
             for (int i = 0; i < 32; i++) {
                 find_boundary_from_half_scan(i, 8);
@@ -450,6 +508,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
 
 void Boundary_detection::reset() {
         this->dist_to_origin = get_dist_to_origin();
+        this->theoretical_dist = get_theoretical_dist();
         this->is_boundary = vector<bool>(this->pointcloud.size(), false);
         this->is_continuous = vector<bool>(this->pointcloud.size(), true);
         this->is_elevating = vector<bool>(this->pointcloud.size(), false);
@@ -457,6 +516,7 @@ void Boundary_detection::reset() {
         this->is_local_min = vector<bool>(this->pointcloud.size(), false);
         this->is_edge_start = vector<bool>(this->pointcloud.size(), false);
         this->is_edge_end = vector<bool>(this->pointcloud.size(), false);
+        this->is_obstacle = vector<bool>(this->pointcloud.size(), false);
 }
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointcloud) {

@@ -28,30 +28,27 @@ public:
         this->sensor_height = sensor_height;
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
-        // max_height_filter(0.45);
-        
-        // for (int i = 0; i < ranges.size(); i++) {
-        //     cout << i << ": " << ranges[i][0] << " " << ranges[i][1] << endl;
-        // }
-        // reorder_pointcloud();
     } 
     
     vector<vector<float>> read_bin(string filename);
     void rotate_and_translate();
     void max_height_filter(float max_height);
     void reorder_pointcloud();
-    void pointcloud_preprocessing();
     void rearrange_pointcloud();
     void rearrange_pointcloud_sort();
+    void pointcloud_preprocessing();
     
     float dist_between(const vector<float>& p1, const vector<float>& p2);
     vector<float> get_dist_to_origin();
+    vector<float> get_theoretical_dist();
     vector<bool> continuous_filter(int scan_id);
     float get_angle(const vector<float>& v1, const vector<float>& v2);
     vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
     vector<bool> local_min_of_direction_change(int scan_id);
     vector<int> elevation_filter(int scan_id);
     void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
+    vector<bool> obstacle_extraction(int scan_id);
+
     void find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection(bool vis=false);
 
@@ -69,6 +66,7 @@ private:
     float sensor_height;
     vector<float> angles;
     vector<float> dist_to_origin;
+    vector<float> theoretical_dist;
     vector<vector<float>> pointcloud;
     vector<bool> is_boundary;
     vector<bool> is_continuous;
@@ -77,5 +75,6 @@ private:
     vector<bool> is_local_min;
     vector<bool> is_edge_start;
     vector<bool> is_edge_end;
+    vector<bool> is_obstacle;
     vector<vector<int>> ranges;
 };
