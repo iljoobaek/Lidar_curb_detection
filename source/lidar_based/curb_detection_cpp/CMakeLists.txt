@@ -12,7 +12,7 @@ add_executable( curb_detection boundary_detection.cpp VelodyneCapture.h main.cpp
 # Find Packages
 # Find Package Eigen3
 find_package( Eigen3 3.3 REQUIRED NO_MODULE )
-target_link_libraries( curb_detection Eigen3::Eigen )
+target_link_libraries( curb_detection Eigen3::Eigen rt)
 
 # Find Package Thread
 find_package( Threads REQUIRED )
