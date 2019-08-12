@@ -137,7 +137,7 @@ from thread import *
 
 offsetX, offsetY, offsetZ, scaleX, lidarOffsetZ = 24, -14.96295, -8, 0.964308, -50.06731667
 HOST = '127.0.0.1'
-PORT = 12345
+PORT = 12358
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 radar_socket_buffer = []
 timer = False
@@ -171,7 +171,7 @@ def expose_radar_socket():
     global timer
     while True:
         timer = True
-        time.sleep(0.41)
+        time.sleep(0.35)
 
 def calculate_scaleZ(rawRadarX):
     if (not np.isnan(rawRadarX) and rawRadarX is not 0):
@@ -1976,7 +1976,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
         vis.create_window(window_name='point cloud', width=1280, height=960)
         pcd = open3d.PointCloud()
         ctr = vis.get_view_control()
-    time.sleep(15)
+    time.sleep(10)
     # /image_raw
     #for topic_0, msg_0, t_0 in data.topic_0:
     #    output_bag.write(topic_0, msg_0, t=t_0)
@@ -2057,31 +2057,36 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
     vis.destroy_window()
 
 topics = ['/camera/image_raw', '/velodyne_points']
-path_0424 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
-path_0517 = '/home/karun/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
-result_path = '/home/karun/Lidar_curb_detection/source/lidar_based/results/'
+path_0424 = '~/LiDAR_camera_calibration_work/data/data_bag/20190424_pointgrey/'
+path_0517 = '~/LiDAR_camera_calibration_work/data/data_bag/20190517_pointgrey/'
+result_path = '/home/droid/lidar_curb_detection/source/results/kesselRun_boundary.bag'
 
 parser = argparse.ArgumentParser(description='Run with either \'rosbag\' or \'realtime\' option')
 parser.add_argument('source', type=str, help='From rosbag file or from bin file in real time')
 args = parser.parse_args()
 if __name__ == '__main__':
-    if args.source not in ['rosbag', 'realtime']:
-        print 'Invalid argument, should be \'rosbag\' or \'realtime\''
+    try:
+        if args.source not in ['rosbag', 'realtime']:
+            print 'Invalid argument, should be \'rosbag\' or \'realtime\''
+            sys.exit()
+        
+        # rosbag option: read from source rosbag file and save the result rosbag at result_path
+        if args.source == 'rosbag': 
+            data_path = data_path_loader(path_0517)
+            # change the number to read different rosbag file
+            # tilted: 0 to 9 
+            # horizontal: 0 to 5 
+            data_name = 'kesselRun.bag'
+            print data_name
+            lidar_data = RosbagParser(data_name, topics)
+            # set "visualize = True" to visualize the result in open3D
+            run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=True, tilted_angle=15., height=1.125)
+        
+        # realtime option: continuously read from bin file at data_path and visualize through open3D 
+        else:
+            data_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin'
+            run_detection_and_display(data_path, 'tilted')
+    except:
+        print("KeyboardInterrupt Caught. Closing")
+        s.shutdown(socket.SHUT_RDWR)
         sys.exit()
-    
-    # rosbag option: read from source rosbag file and save the result rosbag at result_path
-    if args.source == 'rosbag': 
-        data_path = data_path_loader(path_0517)
-        # change the number to read different rosbag file
-        # tilted: 0 to 9 
-        # horizontal: 0 to 5 
-        data_name = 'kesselRun.bag'
-        print data_name
-        lidar_data = RosbagParser(data_name, topics)
-        # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=True, tilted_angle=15., height=1.125)
-    
-    # realtime option: continuously read from bin file at data_path and visualize through open3D 
-    else:
-        data_path = '/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection/image.bin'
-        run_detection_and_display(data_path, 'tilted')
