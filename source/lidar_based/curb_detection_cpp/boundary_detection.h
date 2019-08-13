@@ -8,6 +8,7 @@
 
 #include <Eigen/Dense>
 
+#include "VelodyneCapture.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
 
@@ -39,8 +40,11 @@ public:
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
         timedFunction(std::bind(&Boundary_detection::expose, this), 100);
-    
+        if (dir.find(".pcap") != string::npos) this->isPCAP = true;
+        else this->isPCAP = false;
     } 
+
+    void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
     std::vector<std::vector<float>> read_bin(string filename);
     void rotate_and_translate();
     void max_height_filter(float max_height);
@@ -78,6 +82,7 @@ public:
             };
 
 private:
+    bool isPCAP;
     string directory;
     int frame_id;
     int num_of_scan;
