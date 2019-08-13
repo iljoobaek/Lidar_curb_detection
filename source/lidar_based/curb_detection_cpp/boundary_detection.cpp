@@ -492,7 +492,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
         }
     }
     else if (this->directory == "test2/") {
-        for (int i = 0; i < 1; i++) {
+        for (int i = 1; i < 1888; i++) {
             string filename = this->directory + std::to_string(i) + ".bin";
             this->pointcloud = read_bin(filename);
             pointcloud_preprocessing();
