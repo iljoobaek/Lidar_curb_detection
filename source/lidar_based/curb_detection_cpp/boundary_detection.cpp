@@ -34,6 +34,31 @@ void update_viewer(const vector<vector<float>>& pointcloud, const vector<bool>& 
     viewer.spinOnce();
 }
 
+void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser>& lasers) {
+    this->pointcloud.clear();
+    for (int i = 0; i < lasers.size(); i++) {
+        const double distance = static_cast<double>( lasers[i].distance );
+        const double azimuth  = lasers[i].azimuth  * CV_PI / 180.0;
+        const double vertical = lasers[i].vertical * CV_PI / 180.0;
+
+        float x = static_cast<float>( ( distance * std::cos( vertical ) ) * std::sin( azimuth ) );
+        float y = static_cast<float>( ( distance * std::cos( vertical ) ) * std::cos( azimuth ) );
+        float z = static_cast<float>( ( distance * std::sin( vertical ) ) );
+
+        if( x == 0.0f && y == 0.0f && z == 0.0f ) continue;
+
+        float intensity = static_cast<float>(lasers[i].intensity);
+        float ring = static_cast<float>(lasers[i].id);
+
+        x /= 100.0, y /= 100.0, z/= 100.0; 
+        float dist = std::sqrt(x * x + y * y + z * z);
+        float theta = std::atan2(y, x) * 180.0f / PI;
+        if (dist > 0.9f && y >= 0.0f) {
+            this->pointcloud.push_back({x, y, z, intensity, ring, dist, theta});
+        }
+    }
+}
+
 vector<vector<float>> Boundary_detection::read_bin(string filename) {
     vector<vector<float>> pointcloud;
     int32_t num = 1000000;
@@ -55,7 +80,12 @@ vector<vector<float>> Boundary_detection::read_bin(string filename) {
 
 void Boundary_detection::rotate_and_translate() {
     if (this->pointcloud.empty()) return;
-    // rotation matrix
+    // rotation matrix along x
+    // [1,           0,           0]
+    // [0,  cos(theta), -sin(theta)]
+    // [0,  sin(theta),  cos(theta)]
+    
+    // rotation matrix along y
     // [cos(theta),   0, sin(theta)]
     // [0,            1,          0]
     // [-sin(theta),  0, cos(theta)]
@@ -63,11 +93,23 @@ void Boundary_detection::rotate_and_translate() {
     // cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
     // cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
     // cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
-    for (auto& point : this->pointcloud) {
-        float x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
-        float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
-        point[0] = x;
-        point[2] = z;
+    
+    if (this->isPCAP) {
+        theta = -theta;
+        for (auto& point : this->pointcloud) {
+            float y = point[1] * std::cos(theta) + point[2] * (-std::sin(theta));
+            float z = point[1] * std::sin(theta) + point[2] * std::cos(theta) + this->sensor_height;
+            point[1] = y;
+            point[2] = z;
+        }
+    }
+    else {
+        for (auto& point : this->pointcloud) {
+            float x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
+            float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
+            point[0] = x;
+            point[2] = z;
+        }
     }
 }
 
@@ -107,16 +149,32 @@ void Boundary_detection::rearrange_pointcloud() {
     for (int i = 0; i < num_of_scan; i++) {
         this->ranges[i*2][0] = cur_idx;
         auto iter = pointcloud_copy.begin();
-        while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[6] > 0;})) != pointcloud_copy.end()) {
-            this->pointcloud[cur_idx++] = (*iter);
-            iter++;
+        if (this->isPCAP) {
+            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[0] < 0;})) != pointcloud_copy.end()) {
+                this->pointcloud[cur_idx++] = (*iter);
+                iter++;
+            }
+        }
+        else {
+            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[6] > 0;})) != pointcloud_copy.end()) {
+                this->pointcloud[cur_idx++] = (*iter);
+                iter++;
+            }
         }
         this->ranges[i*2][1] = cur_idx;
         this->ranges[i*2+1][0] = cur_idx;
         iter = pointcloud_copy.begin();
-        while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[6] <= 0;})) != pointcloud_copy.end()) {
-            this->pointcloud[cur_idx++] = (*iter);
-            iter++;
+        if (this->isPCAP) {
+            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[0] >= 0;})) != pointcloud_copy.end()) {
+                this->pointcloud[cur_idx++] = (*iter);
+                iter++;
+            }
+        }
+        else {
+            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float>& point){return point[4] == static_cast<float>(i) && point[6] <= 0;})) != pointcloud_copy.end()) {
+                this->pointcloud[cur_idx++] = (*iter);
+                iter++;
+            }
         }
         this->ranges[i*2+1][1] = cur_idx;
     }
@@ -266,6 +324,7 @@ vector<int> Boundary_detection::elevation_filter(int scan_id) {
         }
     }
     for (int i = 0; i < n; i++) {
+        if (this->pointcloud[6][st+i] < 3.0) thres_z = 0.002;
         if (z_diff[i] > thres_z) is_elevate[i] = 1;
     }
     vector<int> filter({1,1,1,1,1,1,1,1,1});
@@ -473,34 +532,58 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
         , &viewer
     );
 
-    if (this->directory == "test1/") {
-        for (int i = 0; i < 1171; i++) {
-            high_resolution_clock::time_point t1 = high_resolution_clock::now();
-            
-            string filename = this->directory + std::to_string(i) + ".bin";
-            this->pointcloud = read_bin(filename);
+    if (this->isPCAP) {
+        velodyne::VLP16Capture capture(this->directory);
+        if(!capture.isOpen()){
+            std::cerr << "Can't open VelodyneCapture." << std::endl;
+            return {};
+        }
+        while(capture.isRun() && !viewer.wasStopped()){
+            std::vector<velodyne::Laser> lasers;
+            capture >> lasers;
+            if( lasers.empty() ){
+                continue;
+            }
+            laser_to_cartesian(lasers);
             pointcloud_preprocessing();
             reset();
             for (int i = 0; i < 32; i++) {
                 find_boundary_from_half_scan(i, 8);
             }
-
-            high_resolution_clock::time_point t2 = high_resolution_clock::now();
-            auto duration = duration_cast<milliseconds>(t2 - t1).count();
-            cout << duration << endl;
             if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
         }
+
     }
-    else if (this->directory == "test2/") {
-        for (int i = 0; i < 1; i++) {
-            string filename = this->directory + std::to_string(i) + ".bin";
-            this->pointcloud = read_bin(filename);
-            pointcloud_preprocessing();
-            reset();
-            for (int i = 0; i < 32; i++) {
-                find_boundary_from_half_scan(i, 8);
+    else {
+        if (this->directory == "test1/") {
+            for (int i = 0; i < 1171; i++) {
+                high_resolution_clock::time_point t1 = high_resolution_clock::now();
+                
+                string filename = this->directory + std::to_string(i) + ".bin";
+                this->pointcloud = read_bin(filename);
+                pointcloud_preprocessing();
+                reset();
+                for (int i = 0; i < 32; i++) {
+                    find_boundary_from_half_scan(i, 8);
+                }
+
+                high_resolution_clock::time_point t2 = high_resolution_clock::now();
+                auto duration = duration_cast<milliseconds>(t2 - t1).count();
+                cout << duration << endl;
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
             }
-            if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
+        }
+        else if (this->directory == "test2/") {
+            for (int i = 0; i < 1; i++) {
+                string filename = this->directory + std::to_string(i) + ".bin";
+                this->pointcloud = read_bin(filename);
+                pointcloud_preprocessing();
+                reset();
+                for (int i = 0; i < 32; i++) {
+                    find_boundary_from_half_scan(i, 8);
+                }
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, viewer);
+            }
         }
     }
     return {};
