@@ -9,7 +9,7 @@ int main( int argc, char* argv[] ) {
         vector<bool> result = detection->run_detection(true);    
     }
     else {
-        Boundary_detection *detection = new Boundary_detection("test1/", 0, 15.0, 1.125);
+        Boundary_detection *detection = new Boundary_detection("test2/", 3, 17, 0.5);
         vector<bool> result = detection->run_detection(true);    
     }
     return 0;
