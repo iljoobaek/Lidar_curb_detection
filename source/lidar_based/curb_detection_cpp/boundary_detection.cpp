@@ -483,13 +483,13 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
 
     if (this->directory == "test1/") {
         std::vector<cv::Vec3f> test;
-        for (int i = 0; i < 911; i++) {
+        for (int i = 25; i < 911; i++) {
             high_resolution_clock::time_point start = high_resolution_clock::now();
             while (true) {
-                test = radar_pointcloud;
-                if (!test.empty() && i == 0) {
+                test = this->radar_pointcloud;
+                if (!test.empty() && i == 25) {
                     if (isnanf(test.front()[0])) {
-                        usleep(100000);
+                        usleep(10000);
                     } else {
                         break;
                     }
@@ -510,7 +510,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             high_resolution_clock::time_point t2 = high_resolution_clock::now();
             auto duration = duration_cast<milliseconds>(t2 - t1).count();
             cout << duration << endl;
-            int timeRemaining = 85 - int(duration);
+            int timeRemaining = 90 - int(duration);
             std::cout << timeRemaining << std::endl;
 
             t1 = high_resolution_clock::now();
@@ -587,9 +587,9 @@ void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned 
     }).detach();
 }
 void Boundary_detection::expose() {
-    //this->mem_mutex.lock();
+    this->mem_mutex.lock();
     boost::interprocess::managed_shared_memory segment{boost::interprocess::open_only, "radar_vector"};
     radar_shared *shared = segment.find<radar_shared>("radar_shared").first;
     this->radar_pointcloud.assign(shared->begin(), shared->end());
-    //this->mem_mutex.unlock();
+    this->mem_mutex.unlock();
 }
