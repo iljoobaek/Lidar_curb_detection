@@ -9,6 +9,7 @@
 #include <Eigen/Dense>
 
 #include "VelodyneCapture.h"
+#include "Fusion.cpp"
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
 
@@ -39,9 +40,10 @@ public:
         this->sensor_height = sensor_height;
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
-        timedFunction(std::bind(&Boundary_detection::expose, this), 100);
+        //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
+        this->fuser = fusion::FusionController();
     } 
 
     void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
@@ -72,6 +74,8 @@ public:
     void reset();    
     std::vector<std::vector<float>>& get_pointcloud();
     std::vector<bool>& get_result();
+
+    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result);
     void timedFunction(std::function<void(void)> func, unsigned int interval);
     void expose();
     
@@ -83,6 +87,8 @@ public:
 
 private:
     bool isPCAP;
+    bool firstRun = true;
+    fusion::FusionController fuser;
     string directory;
     int frame_id;
     int num_of_scan;

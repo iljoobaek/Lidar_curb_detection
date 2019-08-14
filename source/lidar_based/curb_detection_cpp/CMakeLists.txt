@@ -7,7 +7,7 @@ set( CMAKE_CXX_EXTENSIONS OFF )
 
 # Create Project
 project( curb_detection )
-add_executable( curb_detection boundary_detection.cpp VelodyneCapture.h main.cpp )
+add_executable( curb_detection boundary_detection.cpp Fusion.cpp VelodyneCapture.h main.cpp )
 
 # Find Packages
 # Find Package Eigen3

@@ -16,31 +16,44 @@ std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g) {
     return out; 
 }
 
-void update_viewer(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result, std::vector<cv::Vec3f> radar_pointcloud, cv::viz::Viz3d viewer) {
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result) {
     std::vector<cv::Vec3f> buffer(pointcloud.size());
-    std::vector<cv::Vec3b> colors(pointcloud.size());
+    std::vector<cv::Vec3f> lineBuffer;
     for (int i = 0; i < pointcloud.size(); i++) {
-        buffer[i] = cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]);
-        if (result[i]) colors[i] = {0,0,255};
-        else colors[i] = {255,255,255};
-    } 
-    if (buffer.empty()) {return;}
+        if (result[i]) {
+            lineBuffer.push_back(cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]));
+        } else {
+            buffer[i] = cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]);
+        }
+    }
+    std::vector<std::vector<cv::Vec3f>> buffers;
+    buffers.push_back(buffer);
+    buffers.push_back(lineBuffer);
+    return buffers;
+}
+
+void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::Vec3f> radar_pointcloud, cv::viz::Viz3d viewer) {
+    if (buffers[0].empty()) {return;}
     // Create Widget
-    cv::Mat cloudMat = cv::Mat(static_cast<int>(buffer.size()), 1, CV_32FC3, &buffer[0]);
-    cv::Mat colorMat = cv::Mat(static_cast<int>(colors.size()), 1, CV_8UC3, &colors[0]);
+    cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[0].size()), 1, CV_32FC3, &buffers[0][0]);
+    cv::Mat lineMat = cv::Mat(static_cast<int>(buffers[1].size()), 1, CV_32FC3, &buffers[1][0]);
 
     cv::Mat radarMat = cv::Mat(static_cast<int>(radar_pointcloud.size()),
         1, CV_32FC3, &radar_pointcloud[0]);
 
     cv::viz::WCloudCollection collection;
-    collection.addCloud(radarMat, cv::viz::Color::red());
-    collection.addCloud(cloudMat, colorMat);
+    collection.addCloud(radarMat, cv::viz::Color::black());
+    collection.addCloud(cloudMat, cv::viz::Color::white());
+    collection.addCloud(lineMat, cv::viz::Color::red());
     // Show Point Cloudcloud
 
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", collection);
+    viewer.showWidget("LidarLine Left", lines[0]);
+    viewer.showWidget("LidarLine Right", lines[1]);
     viewer.spinOnce();
 }
+
 
 void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser>& lasers) {
     this->pointcloud.clear();
@@ -541,6 +554,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
     );
 
     if (this->isPCAP) {
+        std::vector<cv::Vec3f> temp;
         velodyne::VLP16Capture capture(this->directory);
         if(!capture.isOpen()){
             std::cerr << "Can't open VelodyneCapture." << std::endl;
@@ -548,6 +562,19 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
         }
         while(capture.isRun() && !viewer.wasStopped()){
             high_resolution_clock::time_point start = high_resolution_clock::now();
+            /* while (true) {
+                temp = this->radar_pointcloud;
+                if (!temp.empty() && this->firstRun) {
+                    if (isnanf(temp.front()[0])) {
+                        usleep(10000);
+                    } else {
+                        this->firstRun = false;
+                        break;
+                    }
+                } else {
+                    break;                    
+                }
+            } */
             std::vector<velodyne::Laser> lasers;
             capture >> lasers;
             if( lasers.empty() ){
@@ -575,7 +602,9 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 } else {
                     t2 = high_resolution_clock::now();
                     display_duration = int(duration_cast<milliseconds>(t2 - t1).count());
-                    if (vis) update_viewer(this->pointcloud, this->is_boundary, this->radar_pointcloud, viewer);
+                    std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
+                    std::vector<cv::viz::WLine> WLine = this->fuser.generateDisplayLine(buffers[1]);
+                    if (vis) update_viewer(buffers, WLine, this->radar_pointcloud, viewer);
                 }    
             }
             high_resolution_clock::time_point end = high_resolution_clock::now();
