@@ -18,6 +18,20 @@ public:
         }
     };
 
+    struct RadarBoundary {
+        float x, y;
+        int lowerBound, upperBound;
+
+        bool operator==(const RadarBoundary& a) const //Fuzzy
+        {
+            return isInPercentTolerance(x, a.x, 5) && isInPercentTolerance(y, a.y, 5);
+        }
+        bool operator==(const Line& a) const //Fuzzy
+        {
+            return isInPercentTolerance(x, a.avgX, 15);
+        }
+    };
+
     static bool isInPercentTolerance(float measured, float actual,
         float percentTolerance)
     {
@@ -29,19 +43,76 @@ public:
         return measured <= mode + range && measured >= mode - range;
     }
 
-    std::vector<cv::viz::WLine> generateDisplayLine(std::vector<cv::Vec3f>& points)
+    void addRadarData(std::vector<cv::Vec3f>& points)
     {
-        if (leftLidarLines.size() > 10) {
+        RadarBoundary boundary = { points.back()[0], points.back()[1], (int)points.front()[2], (int)points.back()[2] };
+        rightRadarBoundary.push_back(boundary);
+        if (rightRadarBoundary.size() > 10) {
+            rightRadarBoundary.pop_front();
+        }
+    }
+
+    void addLidarData(Line leftLine, Line rightLine)
+    {
+        leftLidarLines.push_back(leftLine);
+        rightLidarLines.push_back(rightLine);
+        if (leftLidarLines.size() > 16) {
             leftLidarLines.pop_front();
             rightLidarLines.pop_front();
         }
-        std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(points);
+    }
+
+    std::vector<cv::Vec3f> drawRadarBoundary(RadarBoundary boundary)
+    {
+        std::vector<cv::Vec3f> points;
+        for (int i = boundary.lowerBound; i <= boundary.upperBound; i++) {
+            points.push_back(cv::Vec3f(boundary.x, boundary.y, i));
+            points.push_back(cv::Vec3f(boundary.x, boundary.y - 2, i));
+            points.push_back(cv::Vec3f(boundary.x, boundary.y - 1, i));
+            points.push_back(cv::Vec3f(boundary.x, boundary.y + 1, i));
+            points.push_back(cv::Vec3f(boundary.x, boundary.y + 2, i));
+        }
+        return points;
+    }
+
+    bool isLidarConfident(std::deque<Line>& lines)
+    {
+        int matches = 0;
+        for (int i = 0; i < lines.size() - 1; i++) {
+            if (lines.back() == lines[i]) {
+                matches++;
+            }
+        }
+        return matches > 5;
+    }
+
+    std::vector<cv::viz::WLine> generateDisplayLine(std::vector<cv::Vec3f>& lidarPoints, std::vector<cv::Vec3f>& radarPoints)
+    {
+        if (rightLidarLines.size() < 15) {
+            return generateLidarLine(lidarPoints);
+        }
+        if (isLidarConfident(rightLidarLines)) {
+            if (rightRadarBoundary.back() == rightLidarLines.back()) { //Is the point Approximately on the previous line
+                lidarPoints.push_back(radarPoints.front()); //Combines the Data, Radar can be Repeated or Weighted
+                std::cout << "matched" << std::endl;
+            }
+            std::cout << "radar is not on line" << std::endl;
+            return generateLidarLine(lidarPoints);
+        }
+        else {
+            std::cout << "not confident" << std::endl;
+            return generateLidarLine(lidarPoints);
+        }
+    }
+
+    std::vector<cv::viz::WLine> generateLidarLine(std::vector<cv::Vec3f>& lidarPoints)
+    {
+        std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
         std::vector<cv::viz::WLine> WLines;
         cv::Point3d lower, upper;
         Line leftLine = lidarllsq(lines[0]);
         Line rightLine = lidarllsq(lines[1]);
-        leftLidarLines.push_back(leftLine);
-        rightLidarLines.push_back(rightLine);
+        addLidarData(leftLine, rightLine);
         if (leftLidarLines.size() == 0) {
             lower = cv::Point3d(leftLine.b + leftLine.lowerBound * leftLine.m, leftLine.lowerBound, 0);
             upper = cv::Point3d(leftLine.b + leftLine.upperBound * leftLine.m, leftLine.upperBound, 0);
@@ -53,13 +124,7 @@ public:
             WLines.push_back(rightWLine);
         }
         else {
-            int matches = 0;
-            for (Line line : leftLidarLines) {
-                if (leftLine == line) {
-                    matches++;
-                }
-            }
-            if (matches > 5) {
+            if (isLidarConfident(leftLidarLines)) {
                 lower = cv::Point3d(leftLine.b + leftLine.lowerBound * leftLine.m, leftLine.lowerBound, 0);
                 upper = cv::Point3d(leftLine.b + leftLine.upperBound * leftLine.m, leftLine.upperBound, 0);
                 cv::viz::WLine leftWLine = cv::viz::WLine(lower, upper, cv::viz::Color::green());
@@ -69,13 +134,7 @@ public:
                 cv::viz::WLine leftWLine = cv::viz::WLine(cv::Point3d(0, 0, 0), cv::Point3d(0, 0, 0), cv::viz::Color::green());
                 WLines.push_back(leftWLine);
             }
-            matches = 0;
-            for (Line line : rightLidarLines) {
-                if (rightLine == line) {
-                    matches++;
-                }
-            }
-            if (matches > 5) {
+            if (isLidarConfident(rightLidarLines)) {
                 lower = cv::Point3d(rightLine.b + rightLine.lowerBound * rightLine.m, rightLine.lowerBound, 0);
                 upper = cv::Point3d(rightLine.b + rightLine.upperBound * rightLine.m, rightLine.upperBound, 0);
                 cv::viz::WLine rightWLine = cv::viz::WLine(lower, upper, cv::viz::Color::green());
@@ -125,14 +184,43 @@ public:
         return lidarLine;
     }
 
-    std::vector<std::vector<cv::Vec3f> > findLidarLine(std::vector<cv::Vec3f>& points)
-    {   
-        std::vector<float> xVecL, xVecR; //xDistance
+    cv::Vec3f yaw(cv::Vec3f point, float a)
+    {
+        float x = cosf(a) * point[0] + -sinf(a) * point[1];
+        float y = sinf(a) * point[0] + cosf(a) * point[1];
+        return cv::Vec3f(x, y, point[2]);
+    }
+
+    std::vector<float> findThetaToRotate(std::vector<cv::Vec3f>& points)
+    {
+        std::vector<float> thetaVecL, thetaVecR;
         for (int i = 0; i < points.size(); i++) {
             if (points[i][0] > 0) {
-                xVecR.push_back((int)(10 * points[i][0] + 0.5) / 10.);
+                thetaVecR.push_back((int)(10 * atan(points[i][0] / points[i][1]) + 0.5) / 10.);
             }
             else {
+                thetaVecL.push_back((int)(10 * atan(points[i][0] / -points[i][1]) + 0.5) / 10.);
+            }
+        }
+        float thetaRmode = getMode(thetaVecR);
+        float thetaLmode = getMode(thetaVecL);
+        std::vector<float> thetas;
+        thetas.push_back(thetaLmode);
+        thetas.push_back(thetaRmode);
+        return thetas;
+    }
+
+    std::vector<std::vector<cv::Vec3f> > findLidarLine(std::vector<cv::Vec3f>& points)
+    {
+        std::vector<float> xVecL, xVecR, thetas; //xDistance
+        thetas = findThetaToRotate(points);
+        //float thetaL = CV_PI/4. - thetas[0], thetaR = CV_PI/4. - thetas[1];
+        float thetaL = 0, thetaR = 0;
+        for (int i = 0; i < points.size(); i++) {
+            if (yaw(points[i], thetaR)[0] > 0) {
+                xVecR.push_back((int)(10 * points[i][0] + 0.5) / 10.);
+            }
+            if (yaw(points[i], thetaL)[0] < 0) {
                 xVecL.push_back((int)(10 * points[i][0] + 0.5) / 10.);
             }
         }
@@ -141,11 +229,21 @@ public:
         std::vector<cv::Vec3f> linePointsR;
         std::vector<cv::Vec3f> linePointsL;
         for (int i = 0; i < points.size(); i++) {
-            if (isInRange(points[i][0], xRmode, .25) && points[i][1] < 10 && points[i][0] > 0) {
-                linePointsR.push_back(points[i]);
+            if (linePointsR.size() && linePointsL.size()) {
+                if (isInRange(yaw(points[i], thetaR)[0], linePointsR.back()[0], .1) && points[i][1] < 10 && yaw(points[i], thetaR)[0] > 0) {
+                    linePointsR.push_back(points[i]);
+                }
+                if (isInRange(yaw(points[i], thetaL)[0], linePointsL.back()[0], .1) && points[i][1] < 10 && yaw(points[i], thetaL)[0] < 0) {
+                    linePointsL.push_back(points[i]);
+                }
             }
-            if (isInRange(points[i][0], xLmode, .25) && points[i][1] < 10 && points[i][0] < 0) {
-                linePointsL.push_back(points[i]);
+            else {
+                if (isInRange(yaw(points[i], thetaR)[0], xRmode, .25) && points[i][1] < 10 && yaw(points[i], thetaR)[0] > 0) {
+                    linePointsR.push_back(points[i]);
+                }
+                if (isInRange(yaw(points[i], thetaL)[0], xLmode, .25) && points[i][1] < 10 && yaw(points[i], thetaL)[0] < 0) {
+                    linePointsL.push_back(points[i]);
+                }
             }
         }
         std::vector<std::vector<cv::Vec3f> > linePoints;
@@ -184,5 +282,7 @@ public:
 private:
     std::deque<Line> leftLidarLines;
     std::deque<Line> rightLidarLines;
+    std::deque<RadarBoundary> leftRadarBoundary;
+    std::deque<RadarBoundary> rightRadarBoundary;
 };
 }
