@@ -42,7 +42,7 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv:
         1, CV_32FC3, &radar_pointcloud[0]);
 
     cv::viz::WCloudCollection collection;
-    collection.addCloud(radarMat, cv::viz::Color::black());
+    collection.addCloud(radarMat, cv::viz::Color::yellow());
     collection.addCloud(cloudMat, cv::viz::Color::white());
     collection.addCloud(lineMat, cv::viz::Color::red());
     // Show Point Cloudcloud
@@ -564,7 +564,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
         }
         while(capture.isRun() && !viewer.wasStopped()){
             high_resolution_clock::time_point start = high_resolution_clock::now();
-            while (true) {
+            /* while (true) {
                 temp = this->radar_pointcloud;
                 if (!temp.empty() && this->firstRun) {
                     if (isnanf(temp.front()[0])) {
@@ -577,8 +577,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                     usleep(10000);     
                 } else {
                     break;
-                }
-            }
+                }  */
             std::vector<velodyne::Laser> lasers;
             capture >> lasers;
             if( lasers.empty() ){
@@ -596,12 +595,10 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             auto duration = duration_cast<milliseconds>(t2 - t1).count();
             cout << duration << endl;
             int timeRemaining = 85 - int(duration);
-            std::cout << timeRemaining << std::endl;
-
             t1 = high_resolution_clock::now();
             int display_duration = 0;
             temp = this->radar_pointcloud;
-            this->fuser.addRadarData(temp);
+            //this->fuser.addRadarData(temp);
             std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
             std::vector<cv::viz::WLine> WLine = this->fuser.generateDisplayLine(buffers[1], temp);
             while (true) {
