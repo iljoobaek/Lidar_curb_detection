@@ -7,12 +7,23 @@ set( CMAKE_CXX_EXTENSIONS OFF )
 
 # Create Project
 project( curb_detection )
-add_executable( curb_detection boundary_detection.cpp VelodyneCapture.h main.cpp )
+
+INCLUDE_DIRECTORIES(include)
+
+add_executable( curb_detection boundary_detection.cpp LineModel.hpp include/AbstractModel.hpp include/GRANSAC.hpp VelodyneCapture.h main.cpp )
 
 # Find Packages
 # Find Package Eigen3
 find_package( Eigen3 3.3 REQUIRED NO_MODULE )
 target_link_libraries( curb_detection Eigen3::Eigen )
+
+# OpenMP
+FIND_PACKAGE(OpenMP)
+IF(OPENMP_FOUND)
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    MESSAGE(STATUS "Found OpenMP")
+ENDIF()
 
 # Find Package Thread
 find_package( Threads REQUIRED )

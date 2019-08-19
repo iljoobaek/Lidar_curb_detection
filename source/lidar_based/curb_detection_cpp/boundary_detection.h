@@ -8,8 +8,12 @@
 #include <Eigen/Dense>
 
 #include "VelodyneCapture.h"
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
+
+#include "GRANSAC.hpp"
+#include "LineModel.hpp"
 
 #define PI 3.14159265
 #define THETA_R 0.00356999
@@ -52,6 +56,7 @@ public:
     vector<int> elevation_filter(int scan_id);
     void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
     vector<bool> obstacle_extraction(int scan_id);
+    std::vector<cv::Point2f> run_RANSAC(int side);
 
     void find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection(bool vis=false);
