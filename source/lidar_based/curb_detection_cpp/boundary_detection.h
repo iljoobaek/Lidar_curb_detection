@@ -57,6 +57,7 @@ public:
     void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
     vector<bool> obstacle_extraction(int scan_id);
     std::vector<cv::Point2f> run_RANSAC(int side);
+    float distance_to_line(cv::Point2f p1, cv::Point2f p2);
 
     void find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection(bool vis=false);

@@ -20,17 +20,25 @@ GRANSAC::VPFloat Slope(float x0, float y0, float x1, float y1) {
     return (GRANSAC::VPFloat)(y1 - y0) / (x1 - x0);
 }
 
-vector<cv::Point3d> get_line(std::vector<cv::Point2f>& points) {
+vector<cv::Point3d> get_line(std::vector<cv::Point2f>& points, bool isPCAP) {
     GRANSAC::VPFloat slope = Slope(points[0].x, points[0].y, points[1].x, points[1].y);
-    cv::Point3d p(0.0, 0.0, 0.0), q(0.0, 10.0, 0.0);
-    p.x = points[0].x - (points[0].y - p.y) / slope;
-    q.x = points[1].x - (points[1].y - q.y) / slope;
     // p.y = -(a.x - p.x) * slope + a.y;
     // q.y = -(b.x - q.x) * slope + b.y;
-    return {p, q};
+    if (isPCAP) {
+        cv::Point3d p(0.0, 0.0, 0.0), q(0.0, 10.0, 0.0);
+        p.x = points[0].x - (points[0].y - p.y) / slope;
+        q.x = points[1].x - (points[1].y - q.y) / slope;
+        return {p, q};
+    }
+    else {
+        cv::Point3d p(0.0, 0.0, 0.0), q(10.0, 0.0, 0.0);
+        p.y = -(points[0].x - p.x) * slope + points[0].y;
+        q.y = -(points[1].x - q.x) * slope + points[1].y;
+        return {p, q};
+    }
 }
 
-void update_viewer(const vector<vector<float>>& pointcloud, const vector<bool>& result, std::vector<cv::Point2f>& leftLine, std::vector<cv::Point2f>& rightLine,cv::viz::Viz3d viewer) {
+void update_viewer(const vector<vector<float>>& pointcloud, const vector<bool>& result, std::vector<cv::Point2f>& leftLine, std::vector<cv::Point2f>& rightLine,cv::viz::Viz3d viewer, bool isPCAP) {
     std::vector<cv::Vec3f> buffer(pointcloud.size());
     std::vector<cv::Vec3b> colors(pointcloud.size());
     for (int i = 0; i < pointcloud.size(); i++) {
@@ -44,12 +52,12 @@ void update_viewer(const vector<vector<float>>& pointcloud, const vector<bool>& 
     cv::viz::WCloud cloud(cloudMat, colorMat);
 
     if (!leftLine.empty()) {
-        auto points = get_line(leftLine);
+        auto points = get_line(leftLine, isPCAP);
         cv::viz::WLine left(points[0], points[1], cv::viz::Color::green());
         viewer.showWidget("Line Widget 1", left);
     }
     if (!rightLine.empty()) {
-        auto points = get_line(rightLine);
+        auto points = get_line(rightLine, isPCAP);
         cv::viz::WLine right(points[0], points[1], cv::viz::Color::green());
         viewer.showWidget("Line Widget 2", right);
     }
@@ -449,16 +457,19 @@ std::vector<cv::Point2f> Boundary_detection::run_RANSAC(int side) {
     std::vector<std::shared_ptr<GRANSAC::AbstractParameter>> CandPoints;
     for (int i = 0; i < 32; i++) {
         if (i % 2 == side) {
+            int count = 0;
             for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++) {
                 if (is_boundary[j]) {
                     std::shared_ptr<GRANSAC::AbstractParameter> CandPt = std::make_shared<Point2D>(this->pointcloud[j][0], this->pointcloud[j][1]);
                     CandPoints.push_back(CandPt);
+                    count++;
                 }
+                if (count > 10) break;
             }
         }
     }
     GRANSAC::RANSAC<Line2DModel, 2> Estimator;
-    Estimator.Initialize(20, 100); // Threshold, iterations
+    Estimator.Initialize(15, 100); // Threshold, iterations
     int64_t start = cv::getTickCount();
     Estimator.Estimate(CandPoints);
     int64_t end = cv::getTickCount();
@@ -471,10 +482,20 @@ std::vector<cv::Point2f> Boundary_detection::run_RANSAC(int side) {
         if (BestLinePt1 && BestLinePt2) {
             cv::Point2f Pt1f(BestLinePt1->m_Point2D[0], BestLinePt1->m_Point2D[1]);
             cv::Point2f Pt2f(BestLinePt2->m_Point2D[0], BestLinePt2->m_Point2D[1]);
+            float dist = distance_to_line(Pt1f, Pt2f);
+            cout << (side == 0 ? "Left " : "Right ") << "distance: " << dist << " m\n";
             return {Pt1f, Pt2f};
         }
     }
     return {};
+}
+
+float Boundary_detection::distance_to_line(cv::Point2f p1, cv::Point2f p2) {
+    float a = p1.y - p2.y;
+    float b = p1.x - p2.x;
+    float c = p1.x * p2.y- p2.x * p1.y;
+    if (a == 0 && b == 0) cout << "Error\n";
+    return std::abs(c) / std::sqrt(a * a + b * b); 
 }
 
 void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
@@ -611,7 +632,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             }
             auto leftLine = run_RANSAC(0);
             auto rightLine = run_RANSAC(1); 
-            if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer);
+            if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
         }
 
     }
@@ -633,7 +654,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer);
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "test2/") {
@@ -647,7 +668,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 auto leftLine = run_RANSAC(0);
                 auto rightLine = run_RANSAC(1); 
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer);
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
     }
