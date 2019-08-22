@@ -452,7 +452,7 @@ vector<bool> Boundary_detection::obstacle_extraction(int scan_id) {
     return is_obstacle;
 }
 
-std::vector<cv::Point2f> Boundary_detection::run_RANSAC(int side) {
+std::vector<cv::Point2f> Boundary_detection::run_RANSAC(int side, int max_per_scan) {
     // prepare the input points
     std::vector<std::shared_ptr<GRANSAC::AbstractParameter>> CandPoints;
     for (int i = 0; i < 32; i++) {
@@ -464,12 +464,12 @@ std::vector<cv::Point2f> Boundary_detection::run_RANSAC(int side) {
                     CandPoints.push_back(CandPt);
                     count++;
                 }
-                if (count > 10) break;
+                if (count > max_per_scan) break;
             }
         }
     }
     GRANSAC::RANSAC<Line2DModel, 2> Estimator;
-    Estimator.Initialize(15, 100); // Threshold, iterations
+    Estimator.Initialize(0.4, 100); // Threshold, iterations
     int64_t start = cv::getTickCount();
     Estimator.Estimate(CandPoints);
     int64_t end = cv::getTickCount();
