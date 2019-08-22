@@ -32,7 +32,7 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const st
     return buffers;
 }
 
-void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::Vec3f> radar_pointcloud, cv::viz::Viz3d viewer) {
+void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::viz::WText3D> confidences, std::vector<cv::Vec3f> radar_pointcloud, cv::viz::Viz3d viewer) {
     if (buffers[0].empty()) {return;}
     // Create Widget
     cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[0].size()), 1, CV_32FC3, &buffers[0][0]);
@@ -53,6 +53,8 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv:
         viewer.showWidget("LidarLine Left", lines[0]);
         viewer.showWidget("LidarLine Right", lines[1]);
     }
+    viewer.showWidget("Confidence Left", confidences[0]);
+    viewer.showWidget("Confidence Right", confidences[1]);
     viewer.spinOnce();
 }
 
@@ -590,28 +592,27 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             for (int i = 0; i < 32; i++) {
                 find_boundary_from_half_scan(i, 8);
             }
-
-            high_resolution_clock::time_point t2 = high_resolution_clock::now();
-            auto duration = duration_cast<milliseconds>(t2 - t1).count();
-            cout << duration << endl;
-            int timeRemaining = 85 - int(duration);
+            auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - t1).count();
+            cout << "Lidar Time: " << duration << endl;
+            int timeRemaining = 50 - int(duration);
             t1 = high_resolution_clock::now();
             int display_duration = 0;
             temp = this->radar_pointcloud;
             //this->fuser.addRadarData(temp);
+            auto fusionStart = high_resolution_clock::now();
             std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
             std::vector<cv::viz::WLine> WLine = this->fuser.generateDisplayLine(buffers[1], temp);
+            std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
+            cout << "Fusion Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - fusionStart).count() << endl;
             while (true) {
-                if (timeRemaining <= display_duration || timeRemaining == 100) {
+                if (timeRemaining <= display_duration) {
                     break;
                 } else {
-                    t2 = high_resolution_clock::now();
-                    display_duration = int(duration_cast<milliseconds>(t2 - t1).count());
-                    if (vis) update_viewer(buffers, WLine, temp, viewer);
+                    display_duration = int(duration_cast<milliseconds>(high_resolution_clock::now() - t1).count());
+                    if (vis) update_viewer(buffers, WLine, confidences, temp, viewer);
                 }    
             }
-            high_resolution_clock::time_point end = high_resolution_clock::now();
-            cout << duration_cast<milliseconds>(end - start).count() << endl;
+            cout << "Total Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - start).count() << endl;
         }
     }
     else {
