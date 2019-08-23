@@ -1,0 +1,1 @@
+thrust::host_vector<int> Boundary_detection::elevation_filter_gpu(int);
