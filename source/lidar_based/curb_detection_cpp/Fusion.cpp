@@ -1,5 +1,8 @@
 #include <vector>
 #include <math.h>
+#include <algorithm>
+#include <numeric>
+#include <Eigen/Dense>
 
 #include <opencv2/opencv.hpp>
 
@@ -145,8 +148,8 @@ public:
         std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
         std::vector<cv::viz::WLine> WLines;
         cv::Point3d lower, upper;
-        Line leftLine = lidarllsq(lines[0]);
-        Line rightLine = lidarllsq(lines[1]);
+        Line leftLine = linearlsq(lines[0]);
+        Line rightLine = linearlsq(lines[1]);
         addLidarData(leftLine, rightLine);
         if (leftLidarLines.size() == 0) {
             lower = cv::Point3d(leftLine.b + leftLine.lowerBound * leftLine.m, leftLine.lowerBound, 0);
@@ -183,7 +186,109 @@ public:
         return WLines;
     }
 
-    Line lidarllsq(std::vector<cv::Vec3f>& points)
+    std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints) {
+        std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
+        cv::viz::WPolyLine left = thirdOrderlsq(lines[0]), right = thirdOrderlsq(lines[1]);
+        std::vector<cv::viz::WPolyLine> displayLines = { left, right };            
+        return displayLines;
+    }
+
+    cv::viz::WPolyLine thirdOrderlsq(std::vector<cv::Vec3f>& points)
+    {
+        std::vector<float> x, y;
+        for (int i = 0; i < points.size(); i++) {
+            //It is reversed, the xDistance is y in the y = mx+b, and yDistance is x
+            y.push_back(points[i][0]);
+            x.push_back(points[i][1]);
+        }
+        if (x.size() == 0) {
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        }
+          size_t N = x.size();
+        int n = 3;
+        int np1 = n + 1;
+        int np2 = n + 2;
+        int tnp1 = 2 * n + 1;
+        float tmp;
+
+        // X = vector that stores values of sigma(xi^2n)
+        std::vector<float> X(tnp1);
+        for (int i = 0; i < tnp1; ++i) {
+            X[i] = 0;
+            for (int j = 0; j < N; ++j)
+            X[i] += (float)pow(x.at(j), i);
+        }
+
+        // a = vector to store final coefficients.
+        std::vector<float> a(np1);
+
+        // B = normal augmented matrix that stores the equations.
+        std::vector<std::vector<float> > B(np1, std::vector<float> (np2, 0));
+
+        for (int i = 0; i <= n; ++i) 
+            for (int j = 0; j <= n; ++j) 
+            B[i][j] = X[i + j];
+
+        // Y = vector to store values of sigma(xi^n * yi)
+        std::vector<float> Y(np1);
+        for (int i = 0; i < np1; ++i) {
+            Y[i] = (float)0;
+            for (int j = 0; j < N; ++j) {
+            Y[i] += (float)pow(x[j], i)*y[j];
+            }
+        }
+
+        // Load values of Y as last column of B
+        for (int i = 0; i <= n; ++i) 
+            B[i][np1] = Y[i];
+
+        n += 1;
+        int nm1 = n-1;
+
+        // Pivotisation of the B matrix.
+        for (int i = 0; i < n; ++i) 
+            for (int k = i+1; k < n; ++k) 
+            if (B[i][i] < B[k][i]) 
+                for (int j = 0; j <= n; ++j) {
+                tmp = B[i][j];
+                B[i][j] = B[k][j];
+                B[k][j] = tmp;
+                }
+
+        // Performs the Gaussian elimination.
+        // (1) Make all elements below the pivot equals to zero
+        //     or eliminate the variable.
+        for (int i=0; i<nm1; ++i)
+            for (int k =i+1; k<n; ++k) {
+            float t = B[k][i] / B[i][i];
+            for (int j=0; j<=n; ++j)
+                B[k][j] -= t*B[i][j];         // (1)
+            }
+
+        // Back substitution.
+        // (1) Set the variable as the rhs of last equation
+        // (2) Subtract all lhs values except the target coefficient.
+        // (3) Divide rhs by coefficient of variable being calculated.
+        for (int i=nm1; i >= 0; --i) {
+            a[i] = B[i][n];                   // (1)
+            for (int j = 0; j<n; ++j)
+            if (j != i)
+                a[i] -= B[i][j] * a[j];       // (2)
+            a[i] /= B[i][i];                  // (3)
+        }
+        std::vector<float> coeffs;
+        for (size_t i = 0; i < a.size(); ++i) 
+            coeffs.push_back(a[i]);
+        std::vector<cv::Vec3f> linePoints;
+        for (int i = *std::min_element(y.begin(), y.end()) * 100; i <= *std::max_element(y.begin(), y.end()) * 200; i++) {
+            linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i/100. + coeffs[2] * powf(i/100., 2) + coeffs[3] * powf(i/100., 3), i/100., 0));
+        }
+        cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
+        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+    }
+
+    Line linearlsq(std::vector<cv::Vec3f>& points)
     {
         std::vector<float> xVec, yVec;
         for (int i = 0; i < points.size(); i++) {
@@ -324,12 +429,12 @@ public:
         if (rightCoherency > 0.8) {
             confidenceRight = 1.;
         }
-        if (leftCoherency < 0.3) {
+        /* if (leftCoherency < 0.3) {
             confidenceLeft = 0.;
         }
-        if (lineCoherency(rightLidarLines) < 0.3) {
+        if (rightCoherency < 0.3) {
             confidenceRight = 0.;
-        }
+        } */
     }
 
     RadarBoundary rotateEulerAngles(RadarBoundary& boundary, float a, float b, float c)
@@ -345,10 +450,10 @@ public:
     RadarBoundary translatePoint(RadarBoundary& boundary, float vx, float vy, float vz, float time = 0.1)
     {
         //All the velocities are negated because if we keep the vehicle constant, as it travels forward the point has a velocity backwards
-        boundary.x += vx * time;
-        boundary.y += vy * time;
-        boundary.upperBound += vz * time;
-        boundary.lowerBound += vz * time;
+        boundary.x += -vx * time;
+        boundary.y += -vy * time;
+        boundary.upperBound += -vz * time;
+        boundary.lowerBound += -vz * time;
         return boundary;
     }
 

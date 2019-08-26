@@ -32,7 +32,7 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const st
     return buffers;
 }
 
-void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::viz::WText3D> confidences, std::vector<cv::Vec3f> radar_pointcloud, cv::viz::Viz3d viewer) {
+void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::viz::WText3D>& confidences, std::vector<cv::Vec3f>& radar_pointcloud, std::vector<cv::viz::WPolyLine>& thirdOrder, cv::viz::Viz3d viewer) {
     if (buffers[0].empty()) {return;}
     // Create Widget
     cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[0].size()), 1, CV_32FC3, &buffers[0][0]);
@@ -53,6 +53,8 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv:
         viewer.showWidget("LidarLine Left", lines[0]);
         viewer.showWidget("LidarLine Right", lines[1]);
     }
+    viewer.showWidget("Poly Left", thirdOrder[0]);
+    viewer.showWidget("Poly Right", thirdOrder[1]);
     viewer.showWidget("Confidence Left", confidences[0]);
     viewer.showWidget("Confidence Right", confidences[1]);
     viewer.spinOnce();
@@ -558,7 +560,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
     );
 
     if (this->isPCAP) {
-        std::vector<cv::Vec3f> temp;
+        std::vector<cv::Vec3f> temp = {cv::Vec3f(0, 0, 0)};
         velodyne::VLP16Capture capture(this->directory);
         if(!capture.isOpen()){
             std::cerr << "Can't open VelodyneCapture." << std::endl;
@@ -566,20 +568,21 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
         }
         while(capture.isRun() && !viewer.wasStopped()){
             high_resolution_clock::time_point start = high_resolution_clock::now();
-            /* while (true) {
+/*             while (!this->firstRun && true) {
                 temp = this->radar_pointcloud;
-                if (!temp.empty() && this->firstRun) {
+                if (!temp.empty() && this->secondRun) {
                     if (isnanf(temp.front()[0])) {
                         usleep(10000);
                     } else {
-                        this->firstRun = false;
+                        this->secondRun = false;
                         break;
                     }
                 } else if (temp.empty()) {
                     usleep(10000);     
                 } else {
                     break;
-                }  */
+                }
+            } */
             std::vector<velodyne::Laser> lasers;
             capture >> lasers;
             if( lasers.empty() ){
@@ -593,26 +596,35 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 find_boundary_from_half_scan(i, 8);
             }
             auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - t1).count();
-            cout << "Lidar Time: " << duration << endl;
-            int timeRemaining = 50 - int(duration);
+            std::cout << "Lidar Time: " << duration << std::endl;
             t1 = high_resolution_clock::now();
             int display_duration = 0;
-            temp = this->radar_pointcloud;
-            //this->fuser.addRadarData(temp);
+            /* if (!firstRun) {
+                temp = this->radar_pointcloud;
+                this->fuser.addRadarData(temp);
+            } */
             auto fusionStart = high_resolution_clock::now();
             std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
             std::vector<cv::viz::WLine> WLine = this->fuser.generateDisplayLine(buffers[1], temp);
             std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
-            cout << "Fusion Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - fusionStart).count() << endl;
+            std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+            std::cout << "Fusion Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - fusionStart).count() << std::endl;
+            duration = duration_cast<milliseconds>(high_resolution_clock::now() - t1).count();
+            t1 = high_resolution_clock::now();
+            int timeRemaining = std::max(30 - int(duration), 10);
             while (true) {
                 if (timeRemaining <= display_duration) {
                     break;
                 } else {
                     display_duration = int(duration_cast<milliseconds>(high_resolution_clock::now() - t1).count());
-                    if (vis) update_viewer(buffers, WLine, confidences, temp, viewer);
+                    if (vis) update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
                 }    
             }
-            cout << "Total Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - start).count() << endl;
+            std::cout << "Total Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - start).count() << std::endl;
+            if (this->firstRun) {
+                this->firstRun = false;
+                this->secondRun = true;
+            }
         }
     }
     else {

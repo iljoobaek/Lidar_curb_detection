@@ -88,6 +88,7 @@ public:
 private:
     bool isPCAP;
     bool firstRun = true;
+    bool secondRun = false;
     fusion::FusionController fuser;
     string directory;
     int frame_id;
