@@ -15,6 +15,8 @@
 #include "GRANSAC.hpp"
 #include "LineModel.hpp"
 
+#include <Python.h>
+
 #define PI 3.14159265
 #define THETA_R 0.00356999
 #define MIN_CURB_HEIGHT 0.05
@@ -24,6 +26,48 @@ using std::endl;
 using std::vector;
 using std::string;
 using namespace std::chrono;
+
+class Object_detection {
+public:
+    Object_detection() {
+        Py_Initialize();
+        if ( !Py_IsInitialized() ){
+            std::cerr << "Initialize failed\n";
+        }
+        else cout << "Python interpreter initialized\n";
+        PyRun_SimpleString("import sys");
+        PyRun_SimpleString("sys.path.append('./')");
+        this->pName = PyString_FromString("detector");
+	    this->pModule = PyImport_Import(this->pName);
+	    if ( !this->pModule ){
+	    	std::cerr << "Can't find Module\n";
+	    	PyErr_Print();
+	    }
+        this->python_class = PyObject_GetAttrString(this->pModule, "ObjectDetector");
+        if ( !this->python_class) std::cerr <<"can't get python class [ObjectDetector]\n";
+        if (PyCallable_Check(python_class)) {
+            std::cout << "Instatiate python class object\n";
+            object = PyObject_CallObject(python_class, nullptr);
+        }
+        else {
+            std::cerr <<"can't instatiate python class [Myclass]\n";
+        }
+    }
+    ~Object_detection() {
+        Py_DECREF(this->pName);
+        Py_DECREF(this->pModule);
+        Py_DECREF(this->python_class);
+        Py_DECREF(this->object);
+        Py_Finalize();
+        cout << "Close Python interpreter\n";
+    }
+    void call_method(char* method, int idx) {
+    	PyObject* value2 = PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+    }
+
+private:
+    PyObject *pName, *pModule, *python_class, *object;
+};
 
 class Boundary_detection {
 public:
@@ -35,8 +79,9 @@ public:
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
+        this->object_detector = new Object_detection();
     } 
-
+    
     void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
     vector<vector<float>> read_bin(string filename);
     void rotate_and_translate();
@@ -69,6 +114,7 @@ public:
     vector<bool>& get_result();
 
 private:
+    Object_detection* object_detector;
     bool isPCAP;
     string directory;
     int frame_id;
