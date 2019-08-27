@@ -18,6 +18,11 @@ public:
         {
             return isInPercentTolerance(avgX, a.avgX, 15) && isInPercentTolerance(b, a.b, 15);
         }
+
+        bool operator==(const cv::Vec3f& a) const //Fuzzy
+        {
+            return isInPercentTolerance(a[1] * m + b, a[0], 25);
+        }
     };
 
     struct RadarBoundary {
@@ -40,7 +45,7 @@ public:
         return (fabs((measured - actual) / actual) * 100. <= percentTolerance);
     }
 
-    bool isInRange(float measured, float mode, float range)
+    static bool isInRange(float measured, float mode, float range)
     {
         return measured <= mode + range && measured >= mode - range;
     }
@@ -64,7 +69,17 @@ public:
         }
     }
 
-    std::vector<cv::Vec3f> drawRadarBoundary(RadarBoundary boundary)
+    void updatePrevRadarBoundaries(std::vector<float> velocity, float time = 0.1)
+    {
+        float vx = velocity[0], vy = velocity[1], vz = velocity[2];
+        float deltaPitch = velocity[3], deltaRoll = velocity[4], deltaYaw = velocity[5];
+        for (int i = 0; i < rightRadarBoundary.size(); i++) {
+            rotateEulerAngles(rightRadarBoundary[i], deltaYaw, deltaPitch, deltaRoll);
+            translatePoint(rightRadarBoundary[i], vx, vy, vz);
+        }
+    }
+
+    std::vector<cv::Vec3f> displayRadarBoundary(RadarBoundary boundary)
     {
         std::vector<cv::Vec3f> points;
         for (int i = boundary.lowerBound; i <= boundary.upperBound; i++) {
@@ -77,22 +92,43 @@ public:
         return points;
     }
 
-    void updatePrevRadarBoundaries(std::vector<float> velocity, float time = 0.1)
+    std::vector<cv::viz::WText3D> displayConfidence(std::vector<cv::Vec3f>& points)
     {
-        float vx = velocity[0], vy = velocity[1], vz = velocity[2];
-        float deltaPitch = velocity[3], deltaRoll = velocity[4], deltaYaw = velocity[5];
-        for (int i = 0; i < rightRadarBoundary.size(); i++) {
-            rotateEulerAngles(rightRadarBoundary[i], deltaYaw, deltaPitch, deltaRoll);
-            translatePoint(rightRadarBoundary[i], vx, vy, vz);
-        }
+        cv::viz::WText3D left = cv::viz::WText3D("Left Confidence: " + std::to_string(confidenceLeft), cv::Point3d(-3, -1, 0), 0.1);
+        cv::viz::WText3D right = cv::viz::WText3D("Right Confidence: " + std::to_string(confidenceRight), cv::Point3d(1, -1, 0), 0.1);
+        std::vector<cv::viz::WText3D> out = { left, right };
+        return out;
     }
 
-    std::vector<cv::viz::WLine> generateDisplayLine(std::vector<cv::Vec3f>& lidarPoints, std::vector<cv::Vec3f>& radarPoints)
+    std::vector<cv::viz::WLine> displayLidarLine(std::vector<cv::Vec3f>& lidarPoints)
     {
-        if (rightLidarLines.size() < 25) {
-            return generateLidarLine(lidarPoints);
-        }
         return generateLidarLine(lidarPoints);
+    }
+
+    std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints)
+    {
+        std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
+        cv::viz::WPolyLine left = thirdOrderlsq(lines[0], confidenceLeft);
+        cv::viz::WPolyLine right = thirdOrderlsq(lines[1], confidenceRight);
+        std::vector<cv::viz::WPolyLine> displayLines = { left, right };
+        return displayLines;
+    }
+
+    std::vector<cv::viz::WLine> displayLowConfidence(std::vector<cv::Vec3f>& lidarPoints, std::vector<float>& velocity)
+    {
+        std::vector<cv::Vec3f> leftLidar, rightLidar;
+        for (int i = 0; i < lidarPoints.size(); i++) {
+            if (lidarPoints[i][0] > 0) {
+                rightLidar.push_back(lidarPoints[i]);
+            }
+            if (lidarPoints[i][0] < 0) {
+                leftLidar.push_back(lidarPoints[i]);
+            }
+        }
+        cv::viz::WLine leftLine = lowConfidence(leftLidar, leftRadarBoundary, velocity);
+        cv::viz::WLine rightLine = lowConfidence(rightLidar, rightRadarBoundary, velocity);
+        std::vector<cv::viz::WLine> lines = { leftLine, rightLine };
+        return lines;
     }
 
     std::vector<float> rotatedPointParameters(std::vector<cv::Vec3f>& points)
@@ -186,15 +222,65 @@ public:
         return WLines;
     }
 
-    std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints) {
-        std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
-        cv::viz::WPolyLine left = thirdOrderlsq(lines[0]);
-        cv::viz::WPolyLine right = thirdOrderlsq(lines[1]);
-        std::vector<cv::viz::WPolyLine> displayLines = { left, right };            
-        return displayLines;
+    std::vector<std::vector<cv::Vec3f> > findLidarLine(std::vector<cv::Vec3f>& points)
+    {
+        cv::Vec3f newOriginL = cv::Vec3f(0, 0, 0), newOriginR = cv::Vec3f(0, 0, 0);
+        for (int i = 0; i < points.size(); i++) {
+            if (newOriginL != cv::Vec3f(0, 0, 0) && newOriginR != cv::Vec3f(0, 0, 0)) {
+                break;
+            }
+            if (points[i][0] > 0 && newOriginR == cv::Vec3f(0, 0, 0)) {
+                newOriginR = points[i];
+            }
+            if (points[i][0] < 0 && newOriginL == cv::Vec3f(0, 0, 0)) {
+                newOriginL = points[i];
+            }
+        }
+        std::vector<float> rotationValues = rotatedPointParameters(points);
+        float thetaL = rotationValues[0], thetaR = rotationValues[1], modeL = rotationValues[2], modeR = rotationValues[3];
+        std::vector<cv::Vec3f> linePointsR, linePointsL;
+        std::vector<float> leftX, rightX;
+        int leftCount = 0, rightCount = 0;
+        for (int i = 0; i < points.size(); i++) {
+            if (points[i][0] > 0) {
+                rightCount++;
+                if (isInRange(yaw(cv::Vec3f(points[i][0] - newOriginR[0], points[i][1] - newOriginR[1], points[1][2]), thetaR)[0], modeR, .4) && points[i][1] < 10) {
+                    linePointsR.push_back(points[i]);
+                    rightX.push_back(points[i][0]);
+                }
+            }
+            if (points[i][0] < 0) {
+                leftCount++;
+                if (isInRange(yaw(cv::Vec3f(points[i][0] - newOriginL[0], points[i][1] - newOriginL[1], points[1][2]), thetaL)[0], modeL, .4) && points[i][1] < 10 && points[i][0] < 0) {
+                    linePointsL.push_back(points[i]);
+                    leftX.push_back(points[i][0]);
+                }
+            }
+        }
+        if (linePointsL.size() && leftCount) {
+            confidenceLeft = linePointsL.size() / static_cast<float>(leftCount);
+        }
+        if (linePointsR.size() && rightCount) {
+            confidenceRight = linePointsR.size() / static_cast<float>(rightCount);
+        }
+        float rRange, lRange;
+        if (linePointsR.size()) {
+            if (*std::max_element(rightX.begin(), rightX.end()) - *std::min_element(rightX.begin(), rightX.end()) > 4) {
+                confidenceRight = 0.;
+            }
+        }
+        if (linePointsL.size()) {
+            if (*std::max_element(leftX.begin(), leftX.end()) - *std::min_element(leftX.begin(), leftX.end()) > 4) {
+                confidenceLeft = 0.;
+            }
+        }
+        std::vector<std::vector<cv::Vec3f> > linePoints;
+        linePoints.push_back(linePointsL);
+        linePoints.push_back(linePointsR);
+        return linePoints;
     }
 
-    cv::viz::WPolyLine thirdOrderlsq(std::vector<cv::Vec3f>& points)
+    cv::viz::WPolyLine thirdOrderlsq(std::vector<cv::Vec3f>& points, float confidence)
     {
         std::vector<float> x, y;
         for (int i = 0; i < points.size(); i++) {
@@ -202,10 +288,18 @@ public:
             y.push_back(points[i][0]);
             x.push_back(points[i][1]);
         }
+        if (confidence < 0.5) {
+            std::vector<cv::Vec3f> zero;
+            zero.push_back(cv::Vec3f(0, 0, 0));
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        }
         if (x.size() == 0) {
             cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
             return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
+        auto minmaxX = std::minmax_element(x.begin(), x.end());
+        float xRange = *minmaxX.second - *minmaxX.first;
         size_t N = x.size();
         int n = 3;
         int np1 = n + 1;
@@ -218,72 +312,78 @@ public:
         for (int i = 0; i < tnp1; ++i) {
             X[i] = 0;
             for (int j = 0; j < N; ++j)
-            X[i] += (float)pow(x.at(j), i);
+                X[i] += (float)pow(x.at(j), i);
         }
 
         // a = vector to store final coefficients.
         std::vector<float> a(np1);
 
         // B = normal augmented matrix that stores the equations.
-        std::vector<std::vector<float> > B(np1, std::vector<float> (np2, 0));
+        std::vector<std::vector<float> > B(np1, std::vector<float>(np2, 0));
 
-        for (int i = 0; i <= n; ++i) 
-            for (int j = 0; j <= n; ++j) 
-            B[i][j] = X[i + j];
+        for (int i = 0; i <= n; ++i)
+            for (int j = 0; j <= n; ++j)
+                B[i][j] = X[i + j];
 
         // Y = vector to store values of sigma(xi^n * yi)
         std::vector<float> Y(np1);
         for (int i = 0; i < np1; ++i) {
             Y[i] = (float)0;
             for (int j = 0; j < N; ++j) {
-            Y[i] += (float)pow(x[j], i)*y[j];
+                Y[i] += (float)pow(x[j], i) * y[j];
             }
         }
 
         // Load values of Y as last column of B
-        for (int i = 0; i <= n; ++i) 
+        for (int i = 0; i <= n; ++i)
             B[i][np1] = Y[i];
 
         n += 1;
-        int nm1 = n-1;
+        int nm1 = n - 1;
 
         // Pivotisation of the B matrix.
-        for (int i = 0; i < n; ++i) 
-            for (int k = i+1; k < n; ++k) 
-            if (B[i][i] < B[k][i]) 
-                for (int j = 0; j <= n; ++j) {
-                tmp = B[i][j];
-                B[i][j] = B[k][j];
-                B[k][j] = tmp;
-                }
+        for (int i = 0; i < n; ++i)
+            for (int k = i + 1; k < n; ++k)
+                if (B[i][i] < B[k][i])
+                    for (int j = 0; j <= n; ++j) {
+                        tmp = B[i][j];
+                        B[i][j] = B[k][j];
+                        B[k][j] = tmp;
+                    }
 
         // Performs the Gaussian elimination.
         // (1) Make all elements below the pivot equals to zero
         //     or eliminate the variable.
-        for (int i=0; i<nm1; ++i)
-            for (int k =i+1; k<n; ++k) {
-            float t = B[k][i] / B[i][i];
-            for (int j=0; j<=n; ++j)
-                B[k][j] -= t*B[i][j];         // (1)
+        for (int i = 0; i < nm1; ++i)
+            for (int k = i + 1; k < n; ++k) {
+                float t = B[k][i] / B[i][i];
+                for (int j = 0; j <= n; ++j)
+                    B[k][j] -= t * B[i][j]; // (1)
             }
 
         // Back substitution.
         // (1) Set the variable as the rhs of last equation
         // (2) Subtract all lhs values except the target coefficient.
         // (3) Divide rhs by coefficient of variable being calculated.
-        for (int i=nm1; i >= 0; --i) {
-            a[i] = B[i][n];                   // (1)
-            for (int j = 0; j<n; ++j)
-            if (j != i)
-                a[i] -= B[i][j] * a[j];       // (2)
-            a[i] /= B[i][i];                  // (3)
+        for (int i = nm1; i >= 0; --i) {
+            a[i] = B[i][n]; // (1)
+            for (int j = 0; j < n; ++j)
+                if (j != i)
+                    a[i] -= B[i][j] * a[j]; // (2)
+            a[i] /= B[i][i]; // (3)
         }
         std::vector<float> coeffs;
-        for (size_t i = 0; i < a.size(); ++i) 
+        for (size_t i = 0; i < a.size(); ++i)
             coeffs.push_back(a[i]);
         std::vector<cv::Vec3f> linePoints;
-        for (int i = *std::min_element(y.begin(), y.end()) * 100; i <= *std::max_element(y.begin(), y.end()) * 150; i++) {
-            linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i/100. + coeffs[2] * powf(i/100., 2) + coeffs[3] * powf(i/100., 3), i/100., 0));
+        for (int i = *minmaxX.first * 100; i <= *minmaxX.second * 100; i++) {
+            linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i / 100. + coeffs[2] * powf(i / 100., 2) + coeffs[3] * powf(i / 100., 3), i / 100., 0));
+        }
+        if (xRange < (coeffs[0] + coeffs[1] * *minmaxX.second + coeffs[2] * powf(*minmaxX.second, 2) + coeffs[3] * powf(*minmaxX.second / 100., 3)) - (coeffs[0] + coeffs[1] * *minmaxX.first + coeffs[2] * powf(*minmaxX.first, 2) + coeffs[3] * powf(*minmaxX.first / 100., 3))) {
+            std::vector<cv::Vec3f> zero;
+            zero.push_back(cv::Vec3f(0, 0, 0));
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
         cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
         return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
@@ -328,76 +428,27 @@ public:
         return lidarLine;
     }
 
-    std::vector<cv::viz::WText3D> displayConfidence(std::vector<cv::Vec3f>& points)
+    cv::viz::WLine lowConfidence(std::vector<cv::Vec3f>& lidarPoints, std::deque<RadarBoundary>& radarBoundary, std::vector<float>& velocity)
     {
-        cv::viz::WText3D left = cv::viz::WText3D("Left Confidence: " + std::to_string(confidenceLeft), cv::Point3d(-3, -1, 0), 0.1);
-        cv::viz::WText3D right = cv::viz::WText3D("Right Confidence: " + std::to_string(confidenceRight), cv::Point3d(1, -1, 0), 0.1);
-        std::vector<cv::viz::WText3D> out = { left, right };
-        return out;
-    }
-
-    std::vector<std::vector<cv::Vec3f> > findLidarLine(std::vector<cv::Vec3f>& points)
-    {
-        cv::Vec3f newOriginL = cv::Vec3f(0, 0, 0), newOriginR = cv::Vec3f(0, 0, 0);
-        for (int i = 0; i < points.size(); i++) {
-            if (newOriginL != cv::Vec3f(0, 0, 0) && newOriginR != cv::Vec3f(0, 0, 0)) {
-                break;
-            }
-            if (points[i][0] > 0 && newOriginR == cv::Vec3f(0, 0, 0)) {
-                newOriginR = points[i];
-            }
-            if (points[i][0] < 0 && newOriginL == cv::Vec3f(0, 0, 0)) {
-                newOriginL = points[i];
+        updatePrevRadarBoundaries(velocity);
+        RadarBoundary current = radarBoundary.back();
+        RadarBoundary prev = radarBoundary[radarBoundary.size() - 2];
+        float m = (current.x - prev.x) / (current.y - prev.y);
+        float b = ((current.x + prev.x) / 2.) - m * ((current.y + prev.y) / 2.);
+        Line radarLine = { b, m, 1, prev.y, 3, (current.x + prev.x) / 2. };
+        std::vector<cv::Vec3f> linePoints;
+        for (int i = 0; i < lidarPoints.size(); i++) {
+            if (radarLine == lidarPoints[i]) {
+                linePoints.push_back(lidarPoints[i]);
             }
         }
-        std::vector<float> rotationValues = rotatedPointParameters(points);
-        float thetaL = rotationValues[0], thetaR = rotationValues[1], modeL = rotationValues[2], modeR = rotationValues[3];
-        std::vector<cv::Vec3f> linePointsR, linePointsL;
-        std::vector<float> leftX, rightX;
-        int leftCount = 0, rightCount = 0;
-        for (int i = 0; i < points.size(); i++) {
-            if (points[i][0] > 0) {
-                rightCount++;
-                if (isInRange(yaw(cv::Vec3f(points[i][0] - newOriginR[0], points[i][1] - newOriginR[1], points[1][2]), thetaR)[0], modeR, .4) && points[i][1] < 10) {
-                    linePointsR.push_back(points[i]);
-                    rightX.push_back(points[i][0]);
-                }
-            }
-            if (points[i][0] < 0) {
-                leftCount++;
-                if (isInRange(yaw(cv::Vec3f(points[i][0] - newOriginL[0], points[i][1] - newOriginL[1], points[1][2]), thetaL)[0], modeL, .4) && points[i][1] < 10 && points[i][0] < 0) {
-                    linePointsL.push_back(points[i]);
-                    leftX.push_back(points[i][0]);
-                }
-            }
-        }
-        if (linePointsL.size() && leftCount) {
-            confidenceLeft = linePointsL.size() / static_cast<float>(leftCount);
-        }
-        else {
-            confidenceLeft = 0.0;
-        }
-        if (linePointsR.size() && rightCount) {
-            confidenceRight = linePointsR.size() / static_cast<float>(rightCount);
-        }
-        else {
-            confidenceRight = 0.0;
-        }
-        float rRange, lRange;
-        if (linePointsR.size()) {
-            if (*std::max_element(rightX.begin(), rightX.end()) - *std::min_element(rightX.begin(), rightX.end()) > 4) {
-                confidenceRight = 0.;
-            }
-        }
-        if (linePointsL.size()) {
-            if (*std::max_element(leftX.begin(), leftX.end()) - *std::min_element(leftX.begin(), leftX.end()) > 4) {
-                confidenceLeft = 0.;
-            }
-        }
-        std::vector<std::vector<cv::Vec3f> > linePoints;
-        linePoints.push_back(linePointsL);
-        linePoints.push_back(linePointsR);
-        return linePoints;
+        linePoints.push_back(displayRadarBoundary(current)[0]);
+        linePoints.push_back(displayRadarBoundary(prev)[0]);
+        Line actual = linearlsq(linePoints);
+        cv::Point3d lower, upper;
+        lower = cv::Point3d(actual.b + actual.lowerBound * actual.m, actual.lowerBound, 0);
+        upper = cv::Point3d(actual.b + actual.upperBound * actual.m, actual.upperBound, 0);
+        return cv::viz::WLine(lower, upper, cv::viz::Color::green());
     }
 
     float lineCoherency(std::deque<Line> lines)
@@ -423,12 +474,10 @@ public:
             }
         }
         float leftCoherency = lineCoherency(leftLidarLines), rightCoherency = lineCoherency(rightLidarLines);
-        confidenceLeft += leftCoherency/1.5;
-        confidenceRight += rightCoherency/1.5;
-        /* if (leftCoherency > 0.0) {
+        if (leftCoherency > 0.6) {
             confidenceLeft = 1.;
         }
-        if (rightCoherency > 0.0) {
+        if (rightCoherency > 0.6) {
             confidenceRight = 1.;
         }
         if (leftCoherency < 0.3) {
@@ -436,11 +485,12 @@ public:
         }
         if (rightCoherency < 0.3) {
             confidenceRight = 0.;
-        } */
+        }
     }
 
     RadarBoundary rotateEulerAngles(RadarBoundary& boundary, float a, float b, float c)
     {
+        //Delta Euler Angles
         float x = (cosf(a) * cosf(b) * boundary.x) + (boundary.y) * (cosf(a) * sinf(b) * sinf(c) - sinf(a) * cosf(c)) + (boundary.lowerBound) * (cosf(a) * sinf(b) * cosf(c) + sinf(a) * sinf(c));
         float y = (sinf(a) * cosf(b) * boundary.x) + (boundary.y) * (sinf(a) * sinf(b) * sinf(c) + cosf(a) * cosf(c)) + (boundary.lowerBound) * (sinf(a) * sinf(b) * cosf(c) - cosf(a) * sinf(c));
         //float z = (-sinf(b) * boundary.x) + (boundary.y)*(cosf(b)*sinf(c)) + (boundary.lowerBound)*(cosf(b)*cosf(c));
@@ -465,6 +515,15 @@ public:
         float y = (sinf(a) * cosf(b) * point[0]) + (point[1]) * (sinf(a) * sinf(b) * sinf(c) + cosf(a) * cosf(c)) + (point[2]) * (sinf(a) * sinf(b) * cosf(c) - cosf(a) * sinf(c));
         float z = (-sinf(b) * point[0]) + (point[1]) * (cosf(b) * sinf(c)) + (point[2]) * (cosf(b) * cosf(c));
         return cv::Vec3f(x, y, z);
+    }
+
+    cv::Vec3f translatePoint(cv::Vec3f& point, float vx, float vy, float vz, float time = 0.1)
+    {
+        //All the velocities are negated because if we keep the vehicle constant, as it travels forward the point has a velocity backwards
+        point[0] += -vx * time;
+        point[1] += -vy * time;
+        point[2] += -vz * time;
+        return point;
     }
 
     cv::Vec3f yaw(cv::Vec3f point, float a)
@@ -506,6 +565,7 @@ private:
     std::deque<Line> rightLidarLines;
     std::deque<RadarBoundary> leftRadarBoundary;
     std::deque<RadarBoundary> rightRadarBoundary;
-    float confidenceLeft, confidenceRight;
+    float confidenceLeft = 0;
+    float confidenceRight = 0;
 };
 }

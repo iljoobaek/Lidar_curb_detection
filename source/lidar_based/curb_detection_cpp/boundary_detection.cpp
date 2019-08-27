@@ -605,7 +605,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             } */
             auto fusionStart = high_resolution_clock::now();
             std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
-            std::vector<cv::viz::WLine> WLine = this->fuser.generateDisplayLine(buffers[1], temp);
+            std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
             std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
             std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
             std::cout << "Fusion Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - fusionStart).count() << std::endl;
