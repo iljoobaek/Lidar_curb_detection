@@ -150,11 +150,9 @@ class ObjectDetector(object):
         print rbboxes
         return image
 
-    def run(self, frame):
+    def run_video(self, frame):
         print frame
         _, img = self.cap.read()
-        # if img is None:
-        #     break
         #crop ROI
         crop_height = 300
         crop_width = 1280
@@ -165,6 +163,30 @@ class ObjectDetector(object):
         img_crop = img[crop_ymin:crop_ymax,
                        crop_xmin:crop_xmax]
         self.detect(img_crop)
+    
+    def run(self, frame):
+        fn = str(frame).zfill(10) + '.png'
+        fn = os.path.join('image_test3/', fn)
+        print frame, fn
+        img = cv2.imread(fn)
+        
+        # crop ROI
+        crop_height = 300
+        crop_width = 1280
+        crop_ymin = 200
+        crop_xmin = 0
+        crop_ymax = crop_ymin+crop_height
+        crop_xmax = crop_xmin+crop_width
+        img_crop = img[crop_ymin:crop_ymax,
+                       crop_xmin:crop_xmax]
+        # draw ROI
+        cv2.rectangle(img, (crop_xmin, crop_ymin), (crop_xmax, crop_ymax),
+            (0,0,255), 2)
+        cv2.putText(img, '{:s}'.format('ROI normal (300)'),
+            (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
+        self.detect(img_crop)
+        cv2.imshow("test", img)
+        cv2.waitKey(1)
 
     def _dummy_nms(self, detection_boxes, detection_scores, additional_fields=None,
                    clip_window=None):
@@ -250,35 +272,41 @@ if __name__ == '__main__':
     cap = cv2.VideoCapture(video_path)
     frame_ctr = 0
     time_start = time.time()
-    while(True):
-        _, img = cap.read()
-        if img is None:
-            break
-        #crop ROI
-        crop_height = 300
-        crop_width = 1280
-        crop_ymin = 300
-        crop_xmin = 0
-        crop_ymax = crop_ymin+crop_height
-        crop_xmax = crop_xmin+crop_width
-        img_crop = img[crop_ymin:crop_ymax,
-                       crop_xmin:crop_xmax]
-        # draw ROI
-        cv2.rectangle(img, (crop_xmin, crop_ymin), (crop_xmax, crop_ymax),
-            (0,0,255), 2)
-        cv2.putText(img, '{:s}'.format('ROI normal (300)'),
-            (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
-        detector.detect(img_crop)
-        cv2.imshow('Output',img)
+    
+    frame = 0
+    while (frame < 1000):
+        detector.run(frame)
+        frame += 1
+    
+    # while(True):
+    #     _, img = cap.read()
+    #     if img is None:
+    #         break
+    #     #crop ROI
+    #     crop_height = 300
+    #     crop_width = 1280
+    #     crop_ymin = 300
+    #     crop_xmin = 0
+    #     crop_ymax = crop_ymin+crop_height
+    #     crop_xmax = crop_xmin+crop_width
+    #     img_crop = img[crop_ymin:crop_ymax,
+    #                    crop_xmin:crop_xmax]
+    #     # draw ROI
+    #     cv2.rectangle(img, (crop_xmin, crop_ymin), (crop_xmax, crop_ymax),
+    #         (0,0,255), 2)
+    #     cv2.putText(img, '{:s}'.format('ROI normal (300)'),
+    #         (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
+    #     detector.detect(img_crop)
+    #     cv2.imshow('Output',img)
 
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-        #timing
-        frame_ctr = frame_ctr + 1
-        if frame_ctr == 10:
-            time_now = time.time()
-            fps = frame_ctr/(time_now-time_start)
-            print("fps: %f"%fps)
-            frame_ctr = 0
-            time_start = time_now
+    #     key = cv2.waitKey(1) & 0xFF
+    #     if key == ord('q'):
+    #         break
+    #     #timing
+    #     frame_ctr = frame_ctr + 1
+    #     if frame_ctr == 10:
+    #         time_now = time.time()
+    #         fps = frame_ctr/(time_now-time_start)
+    #         print("fps: %f"%fps)
+    #         frame_ctr = 0
+    #         time_start = time_now

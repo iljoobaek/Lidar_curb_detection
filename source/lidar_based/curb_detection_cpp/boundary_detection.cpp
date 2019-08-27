@@ -212,7 +212,7 @@ void Boundary_detection::rearrange_pointcloud() {
         }
         this->ranges[i*2+1][1] = cur_idx;
     }
-    assert(cur_idx == this->pointcloud.size());
+    // assert(cur_idx == this->pointcloud.size());
 }
 
 void Boundary_detection::rearrange_pointcloud_sort() {
@@ -669,6 +669,25 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 auto leftLine = run_RANSAC(0);
                 auto rightLine = run_RANSAC(1); 
+                this->object_detector->call_method("run", i);
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+            }
+        }
+        else if (this->directory == "test3/") {
+            cout << "------------------------------------------------------\n"; 
+            for (int i = 0; i < 1000; i++) {
+                std::stringstream ss;
+                ss << std::setfill('0') << std::setw(10) << i;
+                string filename = this->directory + ss.str() + ".bin";
+                this->pointcloud = read_bin(filename);
+                pointcloud_preprocessing();
+                reset();
+                for (int i = 0; i < 32; i++) {
+                    find_boundary_from_half_scan(i, 8);
+                }
+                auto leftLine = run_RANSAC(0);
+                auto rightLine = run_RANSAC(1); 
+                this->object_detector->call_method("run", i);
                 if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
