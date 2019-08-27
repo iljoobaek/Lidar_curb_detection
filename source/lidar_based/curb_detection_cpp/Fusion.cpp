@@ -2,7 +2,6 @@
 #include <math.h>
 #include <algorithm>
 #include <numeric>
-#include <Eigen/Dense>
 
 #include <opencv2/opencv.hpp>
 
@@ -162,7 +161,8 @@ public:
             WLines.push_back(rightWLine);
         }
         else {
-            if (confidenceLeft > 0.4) {
+            zeroConfidence(lidarPoints);
+            if (confidenceLeft > 0.5) {
                 lower = cv::Point3d(leftLine.b + leftLine.lowerBound * leftLine.m, leftLine.lowerBound, 0);
                 upper = cv::Point3d(leftLine.b + leftLine.upperBound * leftLine.m, leftLine.upperBound, 0);
                 cv::viz::WLine leftWLine = cv::viz::WLine(lower, upper, cv::viz::Color::green());
@@ -172,7 +172,7 @@ public:
                 cv::viz::WLine leftWLine = cv::viz::WLine(cv::Point3d(0, 0, 0), cv::Point3d(0, 0, 0), cv::viz::Color::green());
                 WLines.push_back(leftWLine);
             }
-            if (confidenceRight > 0.4) {
+            if (confidenceRight > 0.5) {
                 lower = cv::Point3d(rightLine.b + rightLine.lowerBound * rightLine.m, rightLine.lowerBound, 0);
                 upper = cv::Point3d(rightLine.b + rightLine.upperBound * rightLine.m, rightLine.upperBound, 0);
                 cv::viz::WLine rightWLine = cv::viz::WLine(lower, upper, cv::viz::Color::green());
@@ -188,7 +188,8 @@ public:
 
     std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints) {
         std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
-        cv::viz::WPolyLine left = thirdOrderlsq(lines[0]), right = thirdOrderlsq(lines[1]);
+        cv::viz::WPolyLine left = thirdOrderlsq(lines[0]);
+        cv::viz::WPolyLine right = thirdOrderlsq(lines[1]);
         std::vector<cv::viz::WPolyLine> displayLines = { left, right };            
         return displayLines;
     }
@@ -205,7 +206,7 @@ public:
             cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
             return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
-          size_t N = x.size();
+        size_t N = x.size();
         int n = 3;
         int np1 = n + 1;
         int np2 = n + 2;
@@ -281,7 +282,7 @@ public:
         for (size_t i = 0; i < a.size(); ++i) 
             coeffs.push_back(a[i]);
         std::vector<cv::Vec3f> linePoints;
-        for (int i = *std::min_element(y.begin(), y.end()) * 100; i <= *std::max_element(y.begin(), y.end()) * 200; i++) {
+        for (int i = *std::min_element(y.begin(), y.end()) * 100; i <= *std::max_element(y.begin(), y.end()) * 150; i++) {
             linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i/100. + coeffs[2] * powf(i/100., 2) + coeffs[3] * powf(i/100., 3), i/100., 0));
         }
         cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
@@ -329,7 +330,6 @@ public:
 
     std::vector<cv::viz::WText3D> displayConfidence(std::vector<cv::Vec3f>& points)
     {
-        zeroConfidence(points);
         cv::viz::WText3D left = cv::viz::WText3D("Left Confidence: " + std::to_string(confidenceLeft), cv::Point3d(-3, -1, 0), 0.1);
         cv::viz::WText3D right = cv::viz::WText3D("Right Confidence: " + std::to_string(confidenceRight), cv::Point3d(1, -1, 0), 0.1);
         std::vector<cv::viz::WText3D> out = { left, right };
@@ -423,13 +423,15 @@ public:
             }
         }
         float leftCoherency = lineCoherency(leftLidarLines), rightCoherency = lineCoherency(rightLidarLines);
-        if (leftCoherency > 0.8) {
+        confidenceLeft += leftCoherency/1.5;
+        confidenceRight += rightCoherency/1.5;
+        /* if (leftCoherency > 0.0) {
             confidenceLeft = 1.;
         }
-        if (rightCoherency > 0.8) {
+        if (rightCoherency > 0.0) {
             confidenceRight = 1.;
         }
-        /* if (leftCoherency < 0.3) {
+        if (leftCoherency < 0.3) {
             confidenceLeft = 0.;
         }
         if (rightCoherency < 0.3) {
