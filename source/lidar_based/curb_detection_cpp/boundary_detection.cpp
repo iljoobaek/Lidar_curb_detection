@@ -673,7 +673,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
-        else if (this->directory == "test3/") {
+        else if (this->directory == "velodynes/") {
             cout << "------------------------------------------------------\n"; 
             for (int i = 0; i < 1000; i++) {
                 std::stringstream ss;
