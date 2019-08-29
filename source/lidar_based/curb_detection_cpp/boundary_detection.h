@@ -37,6 +37,7 @@ public:
             std::cerr << "Initialize failed\n";
         }
         else cout << "Python interpreter initialized\n";
+        // PySys_SetPath("./env/bin");
         PyRun_SimpleString("import sys");
         PyRun_SimpleString("sys.path.append('./')");
         this->pName = PyString_FromString("detector");
@@ -52,7 +53,7 @@ public:
             object = PyObject_CallObject(python_class, nullptr);
         }
         else {
-            std::cerr <<"can't instatiate python class [Myclass]\n";
+            std::cerr <<"can't instatiate python class [ObjectDetector]\n";
         }
     }
     ~Object_detection() {

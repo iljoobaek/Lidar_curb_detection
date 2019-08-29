@@ -19,6 +19,8 @@ find_package(PythonInterp 2.7 REQUIRED)
 find_package(PythonLibs 2.7 REQUIRED)
 set(PROJECT_LIBRARIES ${PYTHON_LIBRARIES} )
 set(PROJECT_INCLUDES_PYTHON ${PYTHON_INCLUDE_DIRS} )
+MESSAGE(STATUS "PYTHON_LIBRARIES = ${PYTHON_LIBRARIES}")
+MESSAGE(STATUS "PYTHON_INCLUDE_DIRS = ${PYTHON_INCLUDE_DIRS}")
 include_directories(${PROJECT_INCLUDES_PYTHON})
 target_link_libraries(${EXECUTABLE} ${PROJECT_LIBRARIES})
 
@@ -100,8 +102,13 @@ endif()
 
 # Find Package OpenCV
 set( OpenCV_DIR "C:/Program Files/opencv/build" )
+# set( OpenCV_DIR "/opt/ros/kinetic" )
 set( OpenCV_STATIC OFF )
 find_package( OpenCV REQUIRED )
+MESSAGE(STATUS "OpenCV_INCLUDE_DIRS = ${OpenCV_INCLUDE_DIRS}" )
+MESSAGE(STATUS "OpenCV_LIB_DIRS = ${OpenCV_LIB_DIRS} " )
+MESSAGE(STATUS "OpenCV_LIBS = ${OpenCV_LIBS} " )
+
 
 # Required Viz Module
 if( OpenCV_FOUND )
