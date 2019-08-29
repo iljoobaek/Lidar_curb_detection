@@ -67,7 +67,7 @@ def rearrange_pointcloud_by_ring(pointcloud):
         curr = pc_rearrange.shape[0]
     if debug_print:
         for i in range(0, 16):
-            print index[i]
+            print(index[i])
     return pc_rearrange, index
 
 def get_pointcloud_list_by_ring_from_pointcloud(pointcloud, n_result=5):
@@ -97,10 +97,8 @@ def get_rearranged_pointcloud(pointcloud):
     cur = 0
     for i in range(0, 16):
         pc_i = get_points_from_laser_number(pointcloud, float(i))
-        left_idx = pc_i[:,1] > 0.
-        right_idx = pc_i[:,1] <= 0.
-        left = pc_i[left_idx]
-        right = pc_i[right_idx]
+        left = pc_i[pc_i[:,1] > 0.]
+        right = pc_i[pc_i[:,1] <= 0.]
         left = reorder_pointcloud(left)
         right = reorder_pointcloud(right)
         len_l, len_r = left.shape[0], right.shape[0]
@@ -179,7 +177,7 @@ def get_color_elevation(elevation, value=.005):
     color = np.ones((n, 3), dtype='float') / 2.
     idx = (elevation[:, 0] > value) + (elevation[:, 0] < -value) 
     color[idx] = np.array([1., 0., 0.])
-    print "Points marked:", np.sum(idx) 
+    print("Points marked:", np.sum(idx))
     return color
 
 def max_height_filter(pointcloud, max_height):
@@ -223,7 +221,7 @@ def get_slope(p1, p2):
     """ 
     dist = np.linalg.norm(p2[0:2]-p1[0:2])
     if debug_print:
-        print p1, p2, dist
+        print(p1, p2, dist)
     return (p2[2] - p1[2]) / dist
 
 def get_z_diff(p1, p2):
@@ -238,7 +236,7 @@ def get_z_diff(p1, p2):
     @rtype: float
     """ 
     if debug_print:
-        print p1, p2, dist
+        print(p1, p2, dist)
     return p2[2] - p1[2]
 
 def elevation_map(pointcloud):
@@ -292,7 +290,7 @@ def test_visualize(data):
     """
     # data_xyz = data[:,:3]
     # data_ir = data[:,3:]
-    # print data_ir.shape
+    # print(data_ir.shape)
     pc_list = []
     for i in range(0, 16):
         pc_i = get_points_from_laser_number(data, float(i))
@@ -423,10 +421,10 @@ def find_matrix(lidar_data):
         pc_i = get_points_from_laser_number(pointcloud, 0)
         for i in range(0, 20):
             theta = 15. + 0.5 * i
-            print theta
+            print(theta)
             rot = rotation_matrix(theta)
             pc_new = rotate_pc(pc_i, rot) 
-            print pc_new[:,2] 
+            print(pc_new[:,2])
             plt.hist(pc_new[:,2], bins=50)    
             plt.show() 
         break
@@ -445,7 +443,7 @@ def visualize_from_bag(lidar_data, config='horizontal'):
     @rtype: 
     """
     if config not in ['horizontal', 'tilted']:
-        print 'Invalid config input, should be horizontal or tilted'
+        print('Invalid config input, should be horizontal or tilted')
         return
 
     # initialize visualizer
@@ -462,7 +460,7 @@ def visualize_from_bag(lidar_data, config='horizontal'):
 
     idx = 0
     for topic_1, msg_1, t_1 in lidar_data.topic_1:
-        print 'frame', idx, '/', lidar_data.len_1
+        print('frame', idx, '/', lidar_data.len_1)
         # get pointcloud from current frame
         pointcloud = get_pointcloud_from_msg(msg_1)
         # pc_rearrange = get_points_from_laser_number(pointcloud, 0)
@@ -849,7 +847,7 @@ def line_fitting_filter(pointcloud_right, curb_list):
         if (sum(idx) < 5):
             curb2[c[0]+1:c[1]] = 0.7  
         # for i in range(x_i.shape[0]):
-        #     # print np.abs(x[i] * param[0] + param[1] - y[i]) / n
+        #     # print(np.abs(x[i] * param[0] + param[1] - y[i]) / n)
         #     if np.abs(x_i[i] * param[0] + param[1] - y_i[i]) / n > dis_thres:
         #         isline = False
         #         break
@@ -1606,8 +1604,8 @@ def curb_detection_v3(pointcloud, config, rot, height, msg=None, n_result=5):
     t_ransac = time.time() - t_now
 
     if debug_print:
-        print tt
-        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+        print(tt)
+        print(t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms")
 
     # realtime option    
     if msg == None:
@@ -1709,8 +1707,8 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
         model_r = np.poly1d(poly_r)    
 
     if debug_print:
-        print tt
-        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+        print(tt)
+        print(t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms")
 
     # realtime option    
     if msg == None:
@@ -1741,7 +1739,7 @@ def boundary_detection_v1(pointcloud, config, rot, height, msg=None, n_result=5)
         return pc2_message(msg, pc_data)
 
 def find_boundary_from_scan(i, num_of_process):
-    num_per_process = 16 / num_of_process
+    num_per_process = 16 // num_of_process
     for j in range (num_per_process*i, num_per_process*(i+1)):
         find_boundary_from_half_multiprocess(j,'left')
         find_boundary_from_half_multiprocess(j,'right')
@@ -1827,8 +1825,8 @@ def boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg=None
     t_ransac = time.time() - t_now
 
     if debug_print:
-        print tt
-        print t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms"
+        print(tt)
+        print (t_rearrange*1000, "ms, ", t_to_list*1000, "ms, ", t_detection*1000, "ms ", "ms ", t_ransac*1000, "ms ", (time.time()-start_time)*1000, "ms")
 
     # realtime option    
     if msg == None:
@@ -1858,6 +1856,21 @@ def boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg=None
 
         return pc2_message(msg, shared_array)
 
+def run_and_save_to_bin(data_name, data, config, detection_type, visualize=False, tilted_angle=19.2, height=1.195):
+    if config not in ['horizontal', 'tilted']:
+        print('Invalid config input, should be horizontal or tilted')
+        return
+
+    idx = 0
+    for topic_1, msg_1, t_1 in data.topic_1:
+        filename = 'test/' + str(idx) + '.bin'
+        f = open(filename, mode='wb')
+        print('frame', idx, '/', lidar_data.len_1)
+        pointcloud = get_pointcloud_from_msg(msg_1)
+        np.asarray(pointcloud, dtype=np.float32).tofile(f)
+        idx += 1
+    output_bag.close()
+
 def run_detection_and_save(data_name, data, config, detection_type, visualize=False, tilted_angle=19.2, height=1.195):
     """
     Run curb detection algorithm throught all messages in data and store as new rosbag file
@@ -1876,7 +1889,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     @type: float
     """
     if config not in ['horizontal', 'tilted']:
-        print 'Invalid config input, should be horizontal or tilted'
+        print('Invalid config input, should be horizontal or tilted')
         return
     if detection_type == 'curb':    
         bag_name = result_path + data_name.split('/')[-1].split('.')[0] + '_curb.bag'
@@ -1900,13 +1913,13 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
     avg_time = 0
     idx = 0
     for topic_1, msg_1, t_1 in data.topic_1:
-        print 'frame', idx, '/', lidar_data.len_1
+        print('frame', idx, '/', lidar_data.len_1)
         start_time = time.time()
         pointcloud = get_pointcloud_from_msg(msg_1)
         msg_1_processed = boundary_detection_v1_multiprocess(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         # msg_1_processed = boundary_detection_v1(pointcloud, config, rot, height, msg_1) # run curb detection algorithm 
         process_time = (time.time() - start_time)* 1000
-        print process_time, "ms"
+        print(process_time, "ms")
         avg_time += process_time 
         output_bag.write(topic_1, msg_1_processed, t=t_1)
         pointcloud_p = get_pointcloud_from_msg(msg_1_processed)
@@ -1918,7 +1931,7 @@ def run_detection_and_save(data_name, data, config, detection_type, visualize=Fa
                 vis.add_geometry(pcd)
             update_vis(vis, pcd, pointcloud_p[:,:3], color_map)
         idx += 1
-    print "Average time:", avg_time / lidar_data.len_1
+    print("Average time:", avg_time / lidar_data.len_1)
     if visualize:
         vis.destroy_window()
     output_bag.close()
@@ -1937,7 +1950,7 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
     @type: float
     """
     if config not in ['horizontal', 'tilted']:
-        print 'Invalid config input, should be horizontal or tilted'
+        print('Invalid config input, should be horizontal or tilted')
         return
     rot = rotation_matrix(tilted_angle)
     
@@ -1952,7 +1965,7 @@ def run_detection_and_display(path, config, tilted_angle=19.2, height=1.195):
 
     idx = 0
     while True:
-        print 'frame', idx
+        print('frame', idx)
         pointcloud = np.fromfile(path, dtype=np.float32).reshape(-1, 5)
         n = pointcloud.shape[0]
         pointcloud_p, left_model, right_model = curb_detection_v3(pointcloud, config, rot, height) # run curb detection algorithm 
@@ -1976,7 +1989,7 @@ parser.add_argument('source', type=str, help='From rosbag file or from bin file 
 args = parser.parse_args()
 if __name__ == '__main__':
     if args.source not in ['rosbag', 'realtime']:
-        print 'Invalid argument, should be \'rosbag\' or \'realtime\''
+        print('Invalid argument, should be \'rosbag\' or \'realtime\'')
         sys.exit()
     
     # rosbag option: read from source rosbag file and save the result rosbag at result_path
@@ -1986,10 +1999,11 @@ if __name__ == '__main__':
         # tilted: 0 to 9 
         # horizontal: 0 to 5 
         data_name = data_path['tilted'][23]
-        print data_name
+        print(data_name)
         lidar_data = RosbagParser(data_name, topics)
         # set "visualize = True" to visualize the result in open3D
-        run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
+        # run_detection_and_save(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
+        run_and_save_to_bin(data_name, lidar_data, 'tilted', 'boundary', visualize=False, tilted_angle=15., height=1.125)
     
     # realtime option: continuously read from bin file at data_path and visualize through open3D 
     else:

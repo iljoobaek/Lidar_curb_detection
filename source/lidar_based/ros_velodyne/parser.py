@@ -29,8 +29,8 @@ class RosbagParser:
                     if exc.errno != errno.EEXIST:
                         raise
             cv2.imwrite(fname, cv_image) 
-        except CvBridgeError, e:
-            print e
+        except(CvBridgeError, e):
+            print(e)
 
     def write_to_bin(self, msg, ind):
         fname = self.folder + "/velodyne_points/data/" + '{:010d}'.format(ind) + ".bin"
@@ -69,7 +69,7 @@ class RosbagParser:
                     self.write_to_image(msg_0, ind)
                     # write to bin
                     self.write_to_bin(msg_1, ind)
-                    print "index " + str(ind) + ": i = " + str(ii) + " j = " + str(jj) 
+                    print("index " + str(ind) + ": i = " + str(ii) + " j = " + str(jj))
                     j = k
                     ind = ind + 1
                     break
@@ -80,7 +80,7 @@ class RosbagParser:
     def read_points(self):
         idx = 0
         for topic_1, msg_1, t_1 in self.topic_1:
-            print msg_1.height, msg_1.width
+            print(msg_1.height, msg_1.width)
             fname = str(idx) + ".txt"
             with open(fname, 'a') as f:
                 array = np.empty((0,5), 'float32')
@@ -95,15 +95,15 @@ if __name__ == "__main__":
     
     # topics in the bag file
     topics = ['/camera/image_raw', '/points_raw']
-    print topics
+    print(topics)
     
     if len(sys.argv) > 1:
         my_parser = RosbagParser(sys.argv[1], topics)
     else:
         my_parser = RosbagParser("out1.bag", topics)
     
-    print str(my_parser.bag.get_message_count(topics[0])) + " messages in " + topics[0]
-    print str(my_parser.bag.get_message_count(topics[1])) + " messages in " + topics[1]
+    print(my_parser.bag.get_message_count(topics[0]), " messages in ", topics[0])
+    print(my_parser.bag.get_message_count(topics[1]), " messages in ", topics[1])
     
     # my_parser.sync_data()
     # my_parser.close_bag()

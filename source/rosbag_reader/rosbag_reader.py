@@ -2,7 +2,6 @@ import os
 import time
 from os.path import isfile, join
 import sys
-import glob
 import numpy as np
 import cv2
 import rosbag
@@ -24,7 +23,7 @@ if __name__ == "__main__":
         topic_camera = bag.read_messages(topics[0])
         topic_lidar = bag.read_messages(topics[1])
         
-        directory = 'velodynes/'
+        directory = 'data/'
         if not os.path.exists(directory):
             os.makedirs(directory)
         idx = 0
