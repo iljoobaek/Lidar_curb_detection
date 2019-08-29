@@ -675,7 +675,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
         }
         else if (this->directory == "velodynes/") {
             cout << "------------------------------------------------------\n"; 
-            for (int i = 0; i < 1000; i++) {
+            for (int i = 0; i < 1; i++) {
                 std::stringstream ss;
                 ss << std::setfill('0') << std::setw(10) << i;
                 string filename = this->directory + ss.str() + ".bin";

@@ -32,12 +32,13 @@ using namespace std::chrono;
 class Object_detection {
 public:
     Object_detection() {
+        // path of the virtual env
+        setenv("PYTHONHOME", "/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection_cpp/env/", true);
         Py_Initialize();
         if ( !Py_IsInitialized() ){
             std::cerr << "Initialize failed\n";
         }
         else cout << "Python interpreter initialized\n";
-        // PySys_SetPath("./env/bin");
         PyRun_SimpleString("import sys");
         PyRun_SimpleString("sys.path.append('./')");
         this->pName = PyString_FromString("detector");
