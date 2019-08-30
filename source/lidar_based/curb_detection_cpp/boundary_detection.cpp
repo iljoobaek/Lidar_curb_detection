@@ -673,9 +673,26 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
+        else if (this->directory == "test3/") {
+            for (int i = 0; i < 190; i++) {
+                std::stringstream ss;
+                ss << std::setfill('0') << std::setw(10) << i;
+                string filename = this->directory + ss.str() + ".bin";
+                this->pointcloud = read_bin(filename);
+                pointcloud_preprocessing();
+                reset();
+                for (int i = 0; i < 32; i++) {
+                    find_boundary_from_half_scan(i, 8);
+                }
+                auto leftLine = run_RANSAC(0);
+                auto rightLine = run_RANSAC(1); 
+                this->object_detector->call_method("run", i);
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+            }
+        }
         else if (this->directory == "velodynes/") {
             cout << "------------------------------------------------------\n"; 
-            for (int i = 0; i < 1; i++) {
+            for (int i = 0; i < 100; i++) {
                 std::stringstream ss;
                 ss << std::setfill('0') << std::setw(10) << i;
                 string filename = this->directory + ss.str() + ".bin";

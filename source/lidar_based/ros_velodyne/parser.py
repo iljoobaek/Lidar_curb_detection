@@ -21,7 +21,7 @@ class RosbagParser:
     def write_to_image(self, msg, ind):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            fname = self.folder +"/image/data/" + '{:010d}'.format(ind) + ".png"
+            fname = self.folder +"/image_01/data/" + '{:010d}'.format(ind) + ".png"
             if not os.path.exists(os.path.dirname(fname)):
                 try:
                     os.makedirs(os.path.dirname(fname))
