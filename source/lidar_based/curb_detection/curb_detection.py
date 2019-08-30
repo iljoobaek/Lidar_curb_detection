@@ -1863,13 +1863,12 @@ def run_and_save_to_bin(data_name, data, config, detection_type, visualize=False
 
     idx = 0
     for topic_1, msg_1, t_1 in data.topic_1:
-        filename = 'test/' + str(idx) + '.bin'
+        filename = 'test/' + str(idx).zfill(10) + '.bin'
         f = open(filename, mode='wb')
         print('frame', idx, '/', lidar_data.len_1)
         pointcloud = get_pointcloud_from_msg(msg_1)
         np.asarray(pointcloud, dtype=np.float32).tofile(f)
         idx += 1
-    output_bag.close()
 
 def run_detection_and_save(data_name, data, config, detection_type, visualize=False, tilted_angle=19.2, height=1.195):
     """
