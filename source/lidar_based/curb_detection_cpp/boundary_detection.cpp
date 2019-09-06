@@ -600,17 +600,17 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
 }
 
 vector<bool> Boundary_detection::run_detection(bool vis) {
-    // Create Viewer
-    cv::viz::Viz3d viewer( "Velodyne" );
-    // Register Keyboard Callback
-    viewer.registerKeyboardCallback([]( const cv::viz::KeyboardEvent& event, void* cookie ){
-        // Close Viewer
-        if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
-            static_cast<cv::viz::Viz3d*>( cookie )->close();
-        }
-        }
-        , &viewer
-    );
+    // // Create Viewer
+    // cv::viz::Viz3d viewer( "Velodyne" );
+    // // Register Keyboard Callback
+    // viewer.registerKeyboardCallback([]( const cv::viz::KeyboardEvent& event, void* cookie ){
+    //     // Close Viewer
+    //     if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
+    //         static_cast<cv::viz::Viz3d*>( cookie )->close();
+    //     }
+    //     }
+    //     , &viewer
+    // );
 
     if (this->isPCAP) {
         velodyne::VLP16Capture capture(this->directory);
@@ -618,7 +618,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             std::cerr << "Can't open VelodyneCapture." << std::endl;
             return {};
         }
-        while(capture.isRun() && !viewer.wasStopped()){
+        while(capture.isRun() /*&& !viewer.wasStopped()*/){
             std::vector<velodyne::Laser> lasers;
             capture >> lasers;
             if( lasers.empty() ){
@@ -632,11 +632,12 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
             }
             auto leftLine = run_RANSAC(0);
             auto rightLine = run_RANSAC(1); 
-            if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+            // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
         }
 
     }
     else {
+        vector<cv::Point2f> leftLine, rightLine; 
         if (this->directory == "test1/") {
             for (int i = 0; i < 1171; i++) {
                 high_resolution_clock::time_point t1 = high_resolution_clock::now();
@@ -648,14 +649,14 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 for (int i = 0; i < 32; i++) {
                     find_boundary_from_half_scan(i, 8);
                 }
-                auto leftLine = run_RANSAC(0);
-                auto rightLine = run_RANSAC(1); 
+                // auto leftLine = run_RANSAC(0);
+                // auto rightLine = run_RANSAC(1); 
 
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
                 this->object_detector->call_method("run", i);
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "test2/") {
@@ -667,10 +668,10 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 for (int i = 0; i < 32; i++) {
                     find_boundary_from_half_scan(i, 8);
                 }
-                auto leftLine = run_RANSAC(0);
-                auto rightLine = run_RANSAC(1); 
+                // auto leftLine = run_RANSAC(0);
+                // auto rightLine = run_RANSAC(1); 
                 this->object_detector->call_method("run", i);
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "test3/") {
@@ -684,10 +685,10 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 for (int i = 0; i < 32; i++) {
                     find_boundary_from_half_scan(i, 8);
                 }
-                auto leftLine = run_RANSAC(0);
-                auto rightLine = run_RANSAC(1); 
+                // auto leftLine = run_RANSAC(0);
+                // auto rightLine = run_RANSAC(1); 
                 this->object_detector->call_method("run", i);
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "velodynes/") {
@@ -702,10 +703,12 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 for (int i = 0; i < 32; i++) {
                     find_boundary_from_half_scan(i, 8);
                 }
-                auto leftLine = run_RANSAC(0);
-                auto rightLine = run_RANSAC(1); 
-                this->object_detector->call_method("run", i);
-                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // auto leftLine = run_RANSAC(0);
+                // auto rightLine = run_RANSAC(1); 
+                PyObject* data = this->object_detector->call_method("run", i);
+                if (data) auto box = this->object_detector->listTupleToVector(data);
+                else cout << "data object is null\n";
+                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
     }
@@ -723,6 +726,22 @@ void Boundary_detection::reset() {
         this->is_edge_start = vector<bool>(this->pointcloud.size(), false);
         this->is_edge_end = vector<bool>(this->pointcloud.size(), false);
         this->is_obstacle = vector<bool>(this->pointcloud.size(), false);
+}
+
+bool Boundary_detection::get_calibration(string filename/*="calibration.yaml"*/) {
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        int data_cnt = 0;
+        string line;
+        vector<vector<float>> extrinsic(4, vector<float>(4, 0.0f));
+        vector<vector<float>> intrinsic(3, vector<float>(3, 0.0f));
+        while (std::getline(file, line)) {
+            std::stringstream ss(line);
+            cout << line << endl;
+        }   
+        return true;
+    }
+    else return false;
 }
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointcloud) {

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 
 #include <Eigen/Dense>
 
@@ -57,6 +58,7 @@ public:
             std::cerr <<"can't instatiate python class [ObjectDetector]\n";
         }
     }
+    
     ~Object_detection() {
         Py_DECREF(this->pName);
         Py_DECREF(this->pModule);
@@ -65,8 +67,32 @@ public:
         Py_Finalize();
         cout << "Close Python interpreter\n";
     }
-    void call_method(char* method, int idx) {
-    	PyObject* value2 = PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+
+    PyObject* call_method(char* method, int idx) {
+    	return PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+    }
+
+    vector<float> listTupleToVector(PyObject* data_in) {
+        vector<float> data;
+        cout << "--- list to vector ---\n";
+        if (PyTuple_Check(data_in)) {
+            for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
+                PyObject* value = PyTuple_GetItem(data_in, i);
+                data.push_back( PyFloat_AsDouble(value) );
+            }
+        }
+        else {
+            if (PyList_Check(data_in)) {
+                for (Py_ssize_t i = 0; i < PyList_Size(data_in); i++) {
+                    cout << i << " ";
+                    PyObject* value = PyList_GetItem(data_in, i);
+                    data.push_back( PyFloat_AsDouble(value) );
+                }
+                cout << endl;
+            }           
+            else throw std::logic_error("Passed PyObject pointer is not a list or tuple."); 
+        }
+        return data;
     }
 
 private:
@@ -84,6 +110,7 @@ public:
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
         this->object_detector = new Object_detection();
+        this->get_calibration();
     } 
     
     void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
@@ -110,6 +137,8 @@ public:
 
     void find_boundary_from_half_scan(int scan_id, int k);
     vector<bool> run_detection(bool vis=false);
+
+    bool get_calibration(string filename="calibration.yaml");
 
     void print_pointcloud(const vector<vector<float>>& pointcloud);
 
@@ -138,4 +167,5 @@ private:
     vector<bool> is_edge_end;
     vector<bool> is_obstacle;
     vector<vector<int>> ranges;
+    vector<vector<float>> lidar_to_image;
 };
