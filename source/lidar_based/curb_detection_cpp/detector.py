@@ -147,8 +147,7 @@ class ObjectDetector(object):
             self._category_index,
             Threshold=None
         )
-        print rbboxes
-        return image
+        return image, rbboxes
 
     def run_video(self, frame):
         print frame
@@ -184,9 +183,13 @@ class ObjectDetector(object):
             (0,0,255), 2)
         cv2.putText(img, '{:s}'.format('ROI normal (300)'),
             (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
-        self.detect(img_crop)
-        cv2.imshow("test", img)
-        cv2.waitKey(1)
+        _, rbboxes= self.detect(img_crop)
+        # cv2.imshow("test", img)
+        # cv2.waitKey(1)
+        res = []
+        for box in rbboxes:
+            res.extend([box[0], box[1], box[2], box[3]])
+        return res 
 
     def _dummy_nms(self, detection_boxes, detection_scores, additional_fields=None,
                    clip_window=None):

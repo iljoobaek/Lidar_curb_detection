@@ -108,6 +108,7 @@ vector<vector<float>> Boundary_detection::read_bin(string filename) {
         px += 5, py += 5, pz += 5, pi += 5, pr += 5;
     }
     fclose(stream);
+    this->pointcloud_unrotated = vector<vector<float>> (pointcloud.begin(), pointcloud.end());
     cout << "Read in " << pointcloud.size() << " points\n"; 
     return pointcloud;
 }
@@ -150,9 +151,13 @@ void Boundary_detection::rotate_and_translate() {
 void Boundary_detection::max_height_filter(float max_height) {
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++) {
-        if (this->pointcloud[i][2] < max_height) this->pointcloud[cur++] = this->pointcloud[i];
+        if (this->pointcloud[i][2] < max_height) {
+            this->pointcloud[cur] = this->pointcloud[i];
+            this->pointcloud_unrotated[cur++] = this->pointcloud_unrotated[i];
+        }
     }
     this->pointcloud.erase(this->pointcloud.begin()+cur, this->pointcloud.end());
+    this->pointcloud_unrotated.erase(this->pointcloud_unrotated.begin()+cur, this->pointcloud_unrotated.end());
 }
 
 void Boundary_detection::reorder_pointcloud() {
@@ -600,17 +605,17 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k) {
 }
 
 vector<bool> Boundary_detection::run_detection(bool vis) {
-    // // Create Viewer
-    // cv::viz::Viz3d viewer( "Velodyne" );
-    // // Register Keyboard Callback
-    // viewer.registerKeyboardCallback([]( const cv::viz::KeyboardEvent& event, void* cookie ){
-    //     // Close Viewer
-    //     if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
-    //         static_cast<cv::viz::Viz3d*>( cookie )->close();
-    //     }
-    //     }
-    //     , &viewer
-    // );
+    // Create Viewer
+    cv::viz::Viz3d viewer( "Velodyne" );
+    // Register Keyboard Callback
+    viewer.registerKeyboardCallback([]( const cv::viz::KeyboardEvent& event, void* cookie ){
+        // Close Viewer
+        if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
+            static_cast<cv::viz::Viz3d*>( cookie )->close();
+        }
+        }
+        , &viewer
+    );
 
     if (this->isPCAP) {
         velodyne::VLP16Capture capture(this->directory);
@@ -693,22 +698,25 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
         }
         else if (this->directory == "velodynes/") {
             cout << "------------------------------------------------------\n"; 
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 1200; i++) {
                 std::stringstream ss;
                 ss << std::setfill('0') << std::setw(10) << i;
-                string filename = this->directory + ss.str() + ".bin";
-                this->pointcloud = read_bin(filename);
+                string filename_velodyne = "/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/velodyne_points/data/" + ss.str() + ".bin";
+                string filename_image = "/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/image_01/data/" + ss.str() + ".png";
+                cv::Mat img = cv::imread(filename_image);
+                this->pointcloud = read_bin(filename_velodyne);
                 pointcloud_preprocessing();
                 reset();
+                auto image_points = get_image_points();
                 for (int i = 0; i < 32; i++) {
                     find_boundary_from_half_scan(i, 8);
                 }
                 // auto leftLine = run_RANSAC(0);
-                // auto rightLine = run_RANSAC(1); 
-                PyObject* data = this->object_detector->call_method("run", i);
-                if (data) auto box = this->object_detector->listTupleToVector(data);
-                else cout << "data object is null\n";
-                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // auto rightLine = run_RANSAC(1);
+                if(find_objects_from_image(i, img)) cout << "---find moving objects\n";
+                if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                cv::imshow("image", img);
+                cv::waitKey(1); 
             }
         }
     }
@@ -726,22 +734,71 @@ void Boundary_detection::reset() {
         this->is_edge_start = vector<bool>(this->pointcloud.size(), false);
         this->is_edge_end = vector<bool>(this->pointcloud.size(), false);
         this->is_obstacle = vector<bool>(this->pointcloud.size(), false);
+        this->is_objects = vector<bool>(this->pointcloud.size(), false);
 }
 
 bool Boundary_detection::get_calibration(string filename/*="calibration.yaml"*/) {
-    std::ifstream file(filename);
-    if (file.is_open()) {
-        int data_cnt = 0;
-        string line;
-        vector<vector<float>> extrinsic(4, vector<float>(4, 0.0f));
-        vector<vector<float>> intrinsic(3, vector<float>(3, 0.0f));
-        while (std::getline(file, line)) {
-            std::stringstream ss(line);
-            cout << line << endl;
-        }   
-        return true;
+    // std::ifstream file(filename);
+    // if (file.is_open()) {
+    //     int data_cnt = 0;
+    //     string line;
+    //     vector<vector<float>> extrinsic(4, vector<float>(4, 0.0f));
+    //     vector<vector<float>> intrinsic(3, vector<float>(3, 0.0f));
+    //     while (std::getline(file, line)) {
+    //         std::stringstream ss(line);
+    //         cout << line << endl;
+    //     }   
+    //     return true;
+    // }
+    // else return false;
+    this->lidar_to_image = vector<vector<float>> (3, vector<float>(4));
+    this->lidar_to_image[0] = {6.07818353e+02, -7.79647962e+02, -8.75258198e+00,  2.24308511e+01};
+    this->lidar_to_image[1] = {5.12565990e+02, 1.31878337e+01, -7.70608644e+02, -1.69836140e+02};
+    this->lidar_to_image[2] = {9.99862028e-01, -8.56083140e-03, 1.42350786e-02, 9.02290525e-03};
+    return true;
+}
+
+vector<vector<float>> Boundary_detection::get_image_points() {
+    vector<vector<float>> image_points(this->pointcloud.size(), vector<float>(2));
+    for (int i = 0; i < image_points.size(); i++) {
+        image_points[i][0] = lidar_to_image[0][0]*this->pointcloud_unrotated[i][0]+lidar_to_image[0][1]*this->pointcloud_unrotated[i][1]+lidar_to_image[0][2]*this->pointcloud_unrotated[i][2]+lidar_to_image[0][3];
+        image_points[i][1] = lidar_to_image[1][0]*this->pointcloud_unrotated[i][0]+lidar_to_image[1][1]*this->pointcloud_unrotated[i][1]+lidar_to_image[1][2]*this->pointcloud_unrotated[i][2]+lidar_to_image[1][3];
+        float scale = lidar_to_image[2][0]*this->pointcloud_unrotated[i][0]+lidar_to_image[2][1]*this->pointcloud_unrotated[i][1]+lidar_to_image[2][2]*this->pointcloud_unrotated[i][2]+lidar_to_image[2][3];
+        image_points[i][0] /= scale;
+        image_points[i][1] /= scale;
     }
-    else return false;
+    return image_points; 
+}
+
+bool Boundary_detection::is_in_bounding_box(const vector<float>& img_point, const vector<vector<int>>& bounding_boxes) {
+    for (auto& box : bounding_boxes) {
+        if (box[1] <= img_point[0] && img_point[0] <= box[3] && box[0] <= img_point[1] &&  img_point[1] <= box[2]) return true;
+    }    
+    return false;
+}
+
+bool Boundary_detection::find_objects_from_image(int frame_idx, cv::Mat& img) {
+    PyObject* data = this->object_detector->call_method("run", frame_idx);
+    vector<vector<int>> bounding_boxes;
+    if (data) {
+        auto box = this->object_detector->listTupleToVector(data);
+        for (int i = 0; i < box.size()/4; i++) {
+            bounding_boxes.push_back({box[i*4]*img_width, box[i*4+1]*img_width, box[i*4+2]*img_height, box[i*4+3]*img_height});
+        }
+    }
+    else {
+        cout << "data object is null\n";
+        return false;
+    }
+    auto image_points = get_image_points(); 
+    for (int i = 0; i < image_points.size(); i++) {
+        cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(255, 0, 0));
+        // cout << image_points[i][0] << " " << image_points[i][1] << endl;
+        if (is_in_bounding_box(image_points[i], bounding_boxes)) {
+            this->is_objects[i] = true;
+        } 
+    }
+    return true;
 }
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>>& pointcloud) {

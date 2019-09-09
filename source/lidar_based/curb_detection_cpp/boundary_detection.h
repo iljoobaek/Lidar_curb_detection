@@ -69,12 +69,14 @@ public:
     }
 
     PyObject* call_method(char* method, int idx) {
-    	return PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+    	PyObject* res;
+        res = PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+        if (!res) PyErr_Print();
+        return res;
     }
 
     vector<float> listTupleToVector(PyObject* data_in) {
         vector<float> data;
-        cout << "--- list to vector ---\n";
         if (PyTuple_Check(data_in)) {
             for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
                 PyObject* value = PyTuple_GetItem(data_in, i);
@@ -84,11 +86,9 @@ public:
         else {
             if (PyList_Check(data_in)) {
                 for (Py_ssize_t i = 0; i < PyList_Size(data_in); i++) {
-                    cout << i << " ";
                     PyObject* value = PyList_GetItem(data_in, i);
                     data.push_back( PyFloat_AsDouble(value) );
                 }
-                cout << endl;
             }           
             else throw std::logic_error("Passed PyObject pointer is not a list or tuple."); 
         }
@@ -109,6 +109,8 @@ public:
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
+        this->img_width = 1280;
+        this->img_height = 1024;
         this->object_detector = new Object_detection();
         this->get_calibration();
     } 
@@ -139,6 +141,9 @@ public:
     vector<bool> run_detection(bool vis=false);
 
     bool get_calibration(string filename="calibration.yaml");
+    vector<vector<float>> get_image_points();
+    bool is_in_bounding_box(const vector<float>& point, const vector<vector<int>>& bounding_boxes);
+    bool find_objects_from_image(int frame_idx, cv::Mat& img);
 
     void print_pointcloud(const vector<vector<float>>& pointcloud);
 
@@ -158,6 +163,7 @@ private:
     vector<float> dist_to_origin;
     vector<float> theoretical_dist;
     vector<vector<float>> pointcloud;
+    vector<vector<float>> pointcloud_unrotated;
     vector<bool> is_boundary;
     vector<bool> is_continuous;
     vector<bool> is_elevating;
@@ -166,6 +172,8 @@ private:
     vector<bool> is_edge_start;
     vector<bool> is_edge_end;
     vector<bool> is_obstacle;
+    vector<bool> is_objects;
     vector<vector<int>> ranges;
     vector<vector<float>> lidar_to_image;
+    int img_width, img_height;
 };
