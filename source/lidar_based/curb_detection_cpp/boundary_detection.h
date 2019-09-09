@@ -68,9 +68,9 @@ public:
         cout << "Close Python interpreter\n";
     }
 
-    PyObject* call_method(char* method, int idx) {
+    PyObject* call_method(char* method, string filename) {
     	PyObject* res;
-        res = PyObject_CallMethod(this->object, method, "(s)", std::to_string(idx).c_str());
+        res = PyObject_CallMethod(this->object, method, "(s)", filename.c_str());
         if (!res) PyErr_Print();
         return res;
     }
@@ -143,7 +143,7 @@ public:
     bool get_calibration(string filename="calibration.yaml");
     vector<vector<float>> get_image_points();
     bool is_in_bounding_box(const vector<float>& point, const vector<vector<int>>& bounding_boxes);
-    bool find_objects_from_image(int frame_idx, cv::Mat& img);
+    bool find_objects_from_image(string filename, cv::Mat& img);
 
     void print_pointcloud(const vector<vector<float>>& pointcloud);
 

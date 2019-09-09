@@ -660,7 +660,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
-                this->object_detector->call_method("run", i);
+                this->object_detector->call_method("run", filename);
                 // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
@@ -675,7 +675,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1); 
-                this->object_detector->call_method("run", i);
+                this->object_detector->call_method("run", filename);
                 // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
@@ -692,13 +692,14 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1); 
-                this->object_detector->call_method("run", i);
+                this->object_detector->call_method("run", filename);
                 // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "velodynes/") {
             cout << "------------------------------------------------------\n"; 
             for (int i = 0; i < 1200; i++) {
+                cout << "Frame: " << i << endl;
                 std::stringstream ss;
                 ss << std::setfill('0') << std::setw(10) << i;
                 string filename_velodyne = "/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/velodyne_points/data/" + ss.str() + ".bin";
@@ -713,7 +714,7 @@ vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1);
-                if(find_objects_from_image(i, img)) cout << "---find moving objects\n";
+                if(find_objects_from_image(filename_image, img)) cout << "---find moving objects\n";
                 if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
                 cv::imshow("image", img);
                 cv::waitKey(1); 
@@ -777,25 +778,28 @@ bool Boundary_detection::is_in_bounding_box(const vector<float>& img_point, cons
     return false;
 }
 
-bool Boundary_detection::find_objects_from_image(int frame_idx, cv::Mat& img) {
-    PyObject* data = this->object_detector->call_method("run", frame_idx);
+bool Boundary_detection::find_objects_from_image(string filename, cv::Mat& img) {
+    PyObject* data = this->object_detector->call_method("run", filename);
     vector<vector<int>> bounding_boxes;
     if (data) {
         auto box = this->object_detector->listTupleToVector(data);
         for (int i = 0; i < box.size()/4; i++) {
-            bounding_boxes.push_back({box[i*4]*img_width, box[i*4+1]*img_width, box[i*4+2]*img_height, box[i*4+3]*img_height});
+            bounding_boxes.push_back({box[i*4]*300+200, box[i*4+1]*img_width, box[i*4+2]*300+200, box[i*4+3]*img_width});
         }
     }
     else {
         cout << "data object is null\n";
         return false;
     }
-    auto image_points = get_image_points(); 
+    auto image_points = get_image_points();
+    for (auto& box : bounding_boxes) cv::rectangle(img, cv::Point(box[1], box[0]), cv::Point(box[3], box[2]), cv::Scalar(255, 255, 255)); 
     for (int i = 0; i < image_points.size(); i++) {
-        cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(255, 0, 0));
-        // cout << image_points[i][0] << " " << image_points[i][1] << endl;
         if (is_in_bounding_box(image_points[i], bounding_boxes)) {
+            cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(0, 255, 0)); 
             this->is_objects[i] = true;
+        }
+        else {
+            cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(255, 0, 0)); 
         } 
     }
     return true;

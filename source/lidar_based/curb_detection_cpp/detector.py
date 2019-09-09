@@ -163,10 +163,10 @@ class ObjectDetector(object):
                        crop_xmin:crop_xmax]
         self.detect(img_crop)
     
-    def run(self, frame):
-        fn = str(frame).zfill(10) + '.png'
-        fn = os.path.join('image_test3/', fn)
-        print frame, fn
+    def run(self, fn):
+        # fn = str(frame).zfill(10) + '.png'
+        # fn = os.path.join('/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/image_01/data/', fn)
+        # print frame, fn
         img = cv2.imread(fn)
         
         # crop ROI
