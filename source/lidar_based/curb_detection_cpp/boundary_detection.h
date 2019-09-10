@@ -57,6 +57,10 @@ public:
         else {
             std::cerr <<"can't instatiate python class [ObjectDetector]\n";
         }
+        this->img_width = 1280;
+        this->img_height = 1024;
+        this->ROI_height = 400;
+        this->ROI_offset_y = 200;
     }
     
     ~Object_detection() {
@@ -94,6 +98,8 @@ public:
         }
         return data;
     }
+
+    int img_width, img_height, ROI_height, ROI_offset_y;
 
 private:
     PyObject *pName, *pModule, *python_class, *object;
@@ -145,6 +151,8 @@ public:
     bool is_in_bounding_box(const vector<float>& point, const vector<vector<int>>& bounding_boxes);
     bool find_objects_from_image(string filename, cv::Mat& img);
 
+    string get_filename_pointcloud(const string& root_dir, int frame_idx);
+    string get_filename_image(const string& root_dir, int frame_idx);
     void print_pointcloud(const vector<vector<float>>& pointcloud);
 
     void reset();    

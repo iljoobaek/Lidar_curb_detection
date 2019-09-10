@@ -164,13 +164,11 @@ class ObjectDetector(object):
         self.detect(img_crop)
     
     def run(self, fn):
-        # fn = str(frame).zfill(10) + '.png'
-        # fn = os.path.join('/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/image_01/data/', fn)
-        # print frame, fn
+        print fn
         img = cv2.imread(fn)
         
         # crop ROI
-        crop_height = 300
+        crop_height = 400
         crop_width = 1280
         crop_ymin = 200
         crop_xmin = 0
@@ -185,7 +183,33 @@ class ObjectDetector(object):
             (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
         _, rbboxes= self.detect(img_crop)
         # cv2.imshow("test", img)
-        # cv2.waitKey(1)
+        # cv2.waitKey(0)
+        res = []
+        for box in rbboxes:
+            res.extend([box[0], box[1], box[2], box[3]])
+        return res 
+    
+    def run_and_visualize(self, fn):
+        print fn
+        img = cv2.imread(fn)
+        
+        # crop ROI
+        crop_height = 400
+        crop_width = 1280
+        crop_ymin = 200
+        crop_xmin = 0
+        crop_ymax = crop_ymin+crop_height
+        crop_xmax = crop_xmin+crop_width
+        img_crop = img[crop_ymin:crop_ymax,
+                       crop_xmin:crop_xmax]
+        # draw ROI
+        cv2.rectangle(img, (crop_xmin, crop_ymin), (crop_xmax, crop_ymax),
+            (0,0,255), 2)
+        cv2.putText(img, '{:s}'.format('ROI normal (300)'),
+            (crop_xmin, crop_ymin+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
+        _, rbboxes= self.detect(img_crop)
+        cv2.imshow("test", img)
+        cv2.waitKey(0)
         res = []
         for box in rbboxes:
             res.extend([box[0], box[1], box[2], box[3]])
@@ -278,7 +302,9 @@ if __name__ == '__main__':
     
     frame = 0
     while (frame < 1000):
-        detector.run(frame)
+        fn = str(frame).zfill(10) + '.png'
+        fn = os.path.join('/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/autoware-20190828123615/image_01/data/', fn)
+        detector.run_and_visualize(fn)
         frame += 1
     
     # while(True):
