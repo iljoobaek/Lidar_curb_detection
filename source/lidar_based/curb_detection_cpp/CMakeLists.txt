@@ -4,15 +4,26 @@ cmake_minimum_required( VERSION 3.6 )
 set( CMAKE_CXX_STANDARD 11 )
 set( CMAKE_CXX_STANDARD_REQUIRED ON )
 set( CMAKE_CXX_EXTENSIONS OFF )
+SET( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # Create Project
 project( curb_detection )
+set(EXECUTABLE curb_detection)
 
-INCLUDE_DIRECTORIES(include)
+include_directories(include)
 
-add_executable( curb_detection boundary_detection.cpp LineModel.hpp include/AbstractModel.hpp include/GRANSAC.hpp VelodyneCapture.h main.cpp )
+add_executable( ${EXECUTABLE} boundary_detection.cpp LineModel.hpp include/AbstractModel.hpp include/GRANSAC.hpp VelodyneCapture.h main.cpp )
 
 # Find Packages
+find_package(PythonInterp 2.7 REQUIRED)
+find_package(PythonLibs 2.7 REQUIRED)
+set(PROJECT_LIBRARIES ${PYTHON_LIBRARIES} )
+set(PROJECT_INCLUDES_PYTHON ${PYTHON_INCLUDE_DIRS} )
+MESSAGE(STATUS "PYTHON_LIBRARIES = ${PYTHON_LIBRARIES}")
+MESSAGE(STATUS "PYTHON_INCLUDE_DIRS = ${PYTHON_INCLUDE_DIRS}")
+include_directories(${PROJECT_INCLUDES_PYTHON})
+target_link_libraries(${EXECUTABLE} ${PROJECT_LIBRARIES})
+
 # Find Package Eigen3
 find_package( Eigen3 3.3 REQUIRED NO_MODULE )
 target_link_libraries( curb_detection Eigen3::Eigen )
@@ -91,8 +102,13 @@ endif()
 
 # Find Package OpenCV
 set( OpenCV_DIR "C:/Program Files/opencv/build" )
+# set( OpenCV_DIR "/opt/ros/kinetic" )
 set( OpenCV_STATIC OFF )
 find_package( OpenCV REQUIRED )
+MESSAGE(STATUS "OpenCV_INCLUDE_DIRS = ${OpenCV_INCLUDE_DIRS}" )
+MESSAGE(STATUS "OpenCV_LIB_DIRS = ${OpenCV_LIB_DIRS} " )
+MESSAGE(STATUS "OpenCV_LIBS = ${OpenCV_LIBS} " )
+
 
 # Required Viz Module
 if( OpenCV_FOUND )

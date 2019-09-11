@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import sensor_msgs.point_cloud2 as pc2 
 import sys, os, errno
+import glob
 
 # The class RosbagParser read in a rosbag file with two topics [/image_raw, /points_raw]
 # and output synced data in [.png, .bin]
@@ -16,12 +17,18 @@ class RosbagParser:
         self.len_0 = self.bag.get_message_count(topics[0])
         self.len_1 = self.bag.get_message_count(topics[1])
         self.bridge = CvBridge()
-        self.folder = bagfile.split('.')[0]
+        self.folder = bagfile.split('.')[0].split('/')[-1]
+        self.dest = './' + self.folder
+
+    def get_pointcloud_from_msg(self, msg):
+        pc_list = list(pc2.read_points(msg))
+        return np.array(pc_list, 'float32')
 
     def write_to_image(self, msg, ind):
         try:
             cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            fname = self.folder +"/image/data/" + '{:010d}'.format(ind) + ".png"
+            fname = self.dest +"/image_01/data/" + '{:010d}'.format(ind) + ".png"
+            #print fname
             if not os.path.exists(os.path.dirname(fname)):
                 try:
                     os.makedirs(os.path.dirname(fname))
@@ -33,7 +40,8 @@ class RosbagParser:
             print(e)
 
     def write_to_bin(self, msg, ind):
-        fname = self.folder + "/velodyne_points/data/" + '{:010d}'.format(ind) + ".bin"
+        fname = self.dest + "/velodyne_points/data/" + '{:010d}'.format(ind) + ".bin"
+        #print fname
         if not os.path.exists(os.path.dirname(fname)):
             try:
                 os.makedirs(os.path.dirname(fname))
@@ -41,9 +49,8 @@ class RosbagParser:
                 if exc.errno != errno.EEXIST:
                     raise
         f = file(fname, "wb")
-        for p in pc2.read_points(msg):
-            arr = np.array(p[0:4],'float32') # x y z intensity 
-            arr.tofile(f)
+        pointcloud = self.get_pointcloud_from_msg(msg)
+        np.asarray(pointcloud, dtype=np.float32).tofile(f)
         f.close()
 
     def sync_data(self):
@@ -95,18 +102,16 @@ if __name__ == "__main__":
     
     # topics in the bag file
     topics = ['/camera/image_raw', '/points_raw']
-    print(topics)
+    print topics
+    data_path = '/home/rtml/Autoware/ros/autoware-20190828*.bag'    
+    path = sorted(glob.glob(data_path))
     
-    if len(sys.argv) > 1:
-        my_parser = RosbagParser(sys.argv[1], topics)
-    else:
-        my_parser = RosbagParser("out1.bag", topics)
+    for p in path: 
+        print p
+        my_parser = RosbagParser(p, topics)
+        my_parser.sync_data()
+        my_parser.close_bag()
     
     print(my_parser.bag.get_message_count(topics[0]), " messages in ", topics[0])
     print(my_parser.bag.get_message_count(topics[1]), " messages in ", topics[1])
-    
-    # my_parser.sync_data()
-    # my_parser.close_bag()
-    
-    my_parser.read_points()
 
