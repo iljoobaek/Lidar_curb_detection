@@ -1,5 +1,7 @@
 #include "boundary_detection.h"
 
+#define USE_OBJECT_MASKING false
+
 template <typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
 {
@@ -692,10 +694,12 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     }
                     if (cur_height > 0.1)
                     {
+                        #if USE_OBJECT_MASKING
                         for (int j = cur_end; j <= cur_start; j++)
                         {
                             if (this->is_objects[st + j]) break;
                         }
+                        #endif
                         for (int j = cur_end; j <= cur_start; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -745,10 +749,12 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        #if USE_OBJECT_MASKING
                         for (int j = cur_start; j <= cur_end; j++)
                         {
                             if (this->is_objects[st + j]) break;
                         }
+                        #endif
                         for (int j = cur_start; j <= cur_end; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -790,8 +796,7 @@ vector<bool> Boundary_detection::run_detection(bool vis)
         {
             static_cast<cv::viz::Viz3d *>(cookie)->close();
         }
-    },
-                                    &viewer);
+    }, &viewer);
 
     if (this->isPCAP)
     {
@@ -861,10 +866,12 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 this->pointcloud = read_bin(filename_velodyne);
                 pointcloud_preprocessing();
                 auto image_points = get_image_points();
+                #if USE_OBJECT_MASKING
                 if (find_objects_from_image(filename_image, img))
                     cout << "--- moving objects detected---\n";
                 else
                     cout << "--- no objects detected---\n";
+                #endif
                 for (int i = 0; i < 32; i++)
                 {
                     find_boundary_from_half_scan(i, 8);
@@ -873,8 +880,10 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 // auto rightLine = run_RANSAC(1);
                 if (vis)
                     update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                #if USE_OBJECT_MASKING
                 cv::imshow("image", img);
                 cv::waitKey(1);
+                #endif
             }
         }
     }

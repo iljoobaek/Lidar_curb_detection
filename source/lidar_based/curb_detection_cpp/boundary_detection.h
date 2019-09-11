@@ -1,4 +1,5 @@
 #include <iostream>
+#include <memory>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -57,6 +58,7 @@ public:
         else {
             std::cerr <<"can't instatiate python class [ObjectDetector]\n";
         }
+        cout << "------------------------------------------------------\n";
         this->img_width = 1280;
         this->img_height = 1024;
         this->ROI_height = 400;
