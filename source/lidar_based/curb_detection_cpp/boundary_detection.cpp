@@ -659,11 +659,11 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                 missed = 0.0f;
                 while (i - 1 >= 0)
                 {
-                    if (is_objects[st+i]) 
-                    {
-                        cout << "(is obj)";
-                        break;
-                    }
+                    // if (is_objects[st+i]) 
+                    // {
+                    //     cout << "(is obj)";
+                    //     break;
+                    // }
                     if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT)
                     {
                         cur_start = i;
@@ -673,10 +673,16 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         missed += 1.0f;
                     missed_rate = missed / (cur_start - cur_end + 1);
                     cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
+                    if (!is_continuous[i])
+                        break;
                     if (missed > 10 && missed_rate > 0.3)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        for (int j = cur_end; j <= cur_start; j++)
+                        {
+                            if (this->is_objects[st + j]) break;
+                        }
                         for (int j = cur_end; j <= cur_start; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -686,6 +692,10 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     }
                     if (cur_height > 0.1)
                     {
+                        for (int j = cur_end; j <= cur_start; j++)
+                        {
+                            if (this->is_objects[st + j]) break;
+                        }
                         for (int j = cur_end; j <= cur_start; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -715,11 +725,11 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                 missed = 0.0f;
                 while (i + 1 < n)
                 {
-                    if (is_objects[st+i]) 
-                    {
-                        cout << "(is obj)";
-                        break;
-                    }
+                    // if (is_objects[st+i]) 
+                    // {
+                    //     cout << "(is obj)";
+                    //     break;
+                    // }
                     if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT)
                     {
                         cur_start = i;
@@ -729,10 +739,16 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         missed += 1.0f;
                     missed_rate = missed / (cur_end - cur_start + 1);
                     cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
+                    if (!is_continuous[i])
+                        break;
                     if (missed > 10 && missed_rate > 0.3)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        for (int j = cur_start; j <= cur_end; j++)
+                        {
+                            if (this->is_objects[st + j]) break;
+                        }
                         for (int j = cur_start; j <= cur_end; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -742,6 +758,10 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     }
                     if (cur_height > 0.1)
                     {
+                        for (int j = cur_start; j <= cur_end; j++)
+                        {
+                            if (this->is_objects[st + j]) break;
+                        }
                         for (int j = cur_start; j <= cur_end; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -791,7 +811,6 @@ vector<bool> Boundary_detection::run_detection(bool vis)
             }
             laser_to_cartesian(lasers);
             pointcloud_preprocessing();
-            reset();
             for (int i = 0; i < 32; i++)
             {
                 find_boundary_from_half_scan(i, 8);
@@ -813,7 +832,6 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 string filename = this->directory + std::to_string(i) + ".bin";
                 this->pointcloud = read_bin(filename);
                 pointcloud_preprocessing();
-                reset();
                 for (int i = 0; i < 32; i++)
                 {
                     find_boundary_from_half_scan(i, 8);
@@ -834,15 +852,14 @@ vector<bool> Boundary_detection::run_detection(bool vis)
             for (int i = 0; i < 1200; i++)
             {
                 cout << "Frame: " << i << endl;
-                string filename_velodyne = get_filename_pointcloud("autoware-20190828123615/", i);
-                string filename_image = get_filename_image("autoware-20190828123615/", i);
+                // string folder_name = "autoware-20190828123615/";
+                string folder_name = "autoware-20190828125749/";
+                string filename_velodyne = get_filename_pointcloud(folder_name, i);
+                string filename_image = get_filename_image(folder_name, i);
                 cv::Mat img = cv::imread(filename_image);
 
                 this->pointcloud = read_bin(filename_velodyne);
                 pointcloud_preprocessing();
-                get_filename_pointcloud("autoware-20190828123615/", i);
-                reset();
-                filename_image = get_filename_image("autoware-20190828123615/", i);
                 auto image_points = get_image_points();
                 if (find_objects_from_image(filename_image, img))
                     cout << "--- moving objects detected---\n";
@@ -856,8 +873,8 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 // auto rightLine = run_RANSAC(1);
                 if (vis)
                     update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
-                // cv::imshow("image", img);
-                // cv::waitKey(0);
+                cv::imshow("image", img);
+                cv::waitKey(1);
             }
         }
     }

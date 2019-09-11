@@ -8,7 +8,7 @@ int main( int argc, char* argv[] ) {
     }
     else {
         Boundary_detection *detection = new Boundary_detection("velodynes/", 0, 16.0, 1.125);
-        vector<bool> result = detection->run_detection(false);    
+        vector<bool> result = detection->run_detection(true);    
     }
     
     return 0;
