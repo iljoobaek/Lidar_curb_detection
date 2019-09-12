@@ -12,9 +12,9 @@ set(EXECUTABLE curb_detection)
 
 include_directories(include)
 
-add_executable( ${EXECUTABLE} boundary_detection.cpp LineModel.hpp include/AbstractModel.hpp include/GRANSAC.hpp VelodyneCapture.h main.cpp )
+add_executable( ${EXECUTABLE} boundary_detection.cpp Fusion.cpp LineModel.hpp include/AbstractModel.hpp include/GRANSAC.hpp VelodyneCapture.h main.cpp )
 
-# Find Packages
+# Find Package Python2
 find_package(PythonInterp 2.7 REQUIRED)
 find_package(PythonLibs 2.7 REQUIRED)
 set(PROJECT_LIBRARIES ${PYTHON_LIBRARIES} )
@@ -26,7 +26,7 @@ target_link_libraries(${EXECUTABLE} ${PROJECT_LIBRARIES})
 
 # Find Package Eigen3
 find_package( Eigen3 3.3 REQUIRED NO_MODULE )
-target_link_libraries( curb_detection Eigen3::Eigen )
+target_link_libraries( curb_detection Eigen3::Eigen rt)
 
 # OpenMP
 FIND_PACKAGE(OpenMP)
@@ -101,8 +101,7 @@ if( NO_EMPTY_RETURNS )
 endif()
 
 # Find Package OpenCV
-set( OpenCV_DIR "C:/Program Files/opencv/build" )
-# set( OpenCV_DIR "/opt/ros/kinetic" )
+# set( OpenCV_DIR "/opt/opencv/build" )
 set( OpenCV_STATIC OFF )
 find_package( OpenCV REQUIRED )
 MESSAGE(STATUS "OpenCV_INCLUDE_DIRS = ${OpenCV_INCLUDE_DIRS}" )

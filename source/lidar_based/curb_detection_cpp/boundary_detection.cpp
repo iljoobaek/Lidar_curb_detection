@@ -47,7 +47,24 @@ vector<cv::Point3d> get_line(std::vector<cv::Point2f> &points, bool isPCAP)
     }
 }
 
-void update_viewer(const vector<vector<float>> &pointcloud, const vector<bool> &result, std::vector<cv::Point2f> &leftLine, std::vector<cv::Point2f> &rightLine, cv::viz::Viz3d viewer, bool isPCAP)
+    // Show Point Cloud
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result) {
+    std::vector<cv::Vec3f> buffer(pointcloud.size());
+    std::vector<cv::Vec3f> lineBuffer;
+    for (int i = 0; i < pointcloud.size(); i++) {
+        if (result[i]) {
+            lineBuffer.push_back(cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]));
+        } else {
+            buffer[i] = cv::Vec3f(pointcloud[i][0], pointcloud[i][1], pointcloud[i][2]);
+        }
+    }
+    std::vector<std::vector<cv::Vec3f>> buffers;
+    buffers.push_back(buffer);
+    buffers.push_back(lineBuffer);
+    return buffers;
+}
+
+void update_viewer_lidar(const vector<vector<float>> &pointcloud, const vector<bool> &result, std::vector<cv::Point2f> &leftLine, std::vector<cv::Point2f> &rightLine, cv::viz::Viz3d viewer, bool isPCAP)
 {
     std::vector<cv::Vec3f> buffer(pointcloud.size());
     std::vector<cv::Vec3b> colors(pointcloud.size());
@@ -76,15 +93,42 @@ void update_viewer(const vector<vector<float>> &pointcloud, const vector<bool> &
         cv::viz::WLine right(points[0], points[1], cv::viz::Color::green());
         viewer.showWidget("Line Widget 2", right);
     }
-
-    // Show Point Cloud
+    // Show Point Cloudcloud
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", cloud);
     viewer.spinOnce();
 }
 
-void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser> &lasers)
-{
+void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::viz::WText3D>& confidences, std::vector<cv::Vec3f>& radar_pointcloud, std::vector<cv::viz::WPolyLine>& thirdOrder, cv::viz::Viz3d viewer) {
+    if (buffers[0].empty()) {return;}
+    // Create Widget
+    cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[0].size()), 1, CV_32FC3, &buffers[0][0]);
+    cv::Mat lineMat = cv::Mat(static_cast<int>(buffers[1].size()), 1, CV_32FC3, &buffers[1][0]);
+
+    cv::Mat radarMat = cv::Mat(static_cast<int>(radar_pointcloud.size()),
+        1, CV_32FC3, &radar_pointcloud[0]);
+
+    cv::viz::WCloudCollection collection;
+    collection.addCloud(radarMat, cv::viz::Color::yellow());
+    collection.addCloud(cloudMat, cv::viz::Color::white());
+    collection.addCloud(lineMat, cv::viz::Color::red());
+    // Show Point Cloudcloud
+
+    viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
+    viewer.showWidget("Cloud", collection);
+    if (lines.size()) {
+        viewer.showWidget("LidarLine Left", lines[0]);
+        viewer.showWidget("LidarLine Right", lines[1]);
+    }
+    viewer.showWidget("Poly Left", thirdOrder[0]);
+    viewer.showWidget("Poly Right", thirdOrder[1]);
+    viewer.showWidget("Confidence Left", confidences[0]);
+    viewer.showWidget("Confidence Right", confidences[1]);
+    viewer.spinOnce();
+}
+
+
+void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser>& lasers) {
     this->pointcloud.clear();
     for (int i = 0; i < lasers.size(); i++)
     {
@@ -216,9 +260,8 @@ void Boundary_detection::reorder_pointcloud()
     // std::sort(this->pointcloud.begin(), this->pointcloud.end(), );
 }
 
-void Boundary_detection::rearrange_pointcloud()
-{
-    vector<vector<float>> pointcloud_copy(this->pointcloud.begin(), this->pointcloud.end());
+void Boundary_detection::rearrange_pointcloud() {
+    std::vector<std::vector<float>> pointcloud_copy(this->pointcloud.begin(), this->pointcloud.end());
     int cur_idx = 0;
     for (int i = 0; i < num_of_scan; i++)
     {
@@ -264,27 +307,23 @@ void Boundary_detection::rearrange_pointcloud()
     // assert(cur_idx == this->pointcloud.size());
 }
 
-void Boundary_detection::rearrange_pointcloud_sort()
-{
-    std::sort(this->pointcloud.begin(), this->pointcloud.end(),
-              [](const vector<float> &p1, const vector<float> &p2) {
+void Boundary_detection::rearrange_pointcloud_sort() {
+    std::sort(this->pointcloud.begin(), this->pointcloud.end(), 
+        [](const std::vector<float>& p1, const std::vector<float>& p2){
             if (p1[4] == p2[4]) return p1[6] > p2[6];
             else return p1[4] < p2[4]; });
 }
 
-vector<float> Boundary_detection::get_dist_to_origin()
-{
-    vector<float> dist(this->pointcloud.size());
-    for (int i = 0; i < dist.size(); i++)
-        dist[i] = std::sqrt(pointcloud[i][0] * pointcloud[i][0] + pointcloud[i][1] * pointcloud[i][1] + pointcloud[i][2] * pointcloud[i][2]);
+std::vector<float> Boundary_detection::get_dist_to_origin() {
+    std::vector<float> dist(this->pointcloud.size());
+    for (int i = 0; i < dist.size(); i++) 
+        dist[i] = std::sqrt(pointcloud[i][0]*pointcloud[i][0] + pointcloud[i][1]*pointcloud[i][1] + pointcloud[i][2]*pointcloud[i][2]); 
     return dist;
 }
 
-vector<float> Boundary_detection::get_theoretical_dist()
-{
-    vector<float> dist(this->num_of_scan);
-    for (int i = 0; i < dist.size(); i++)
-    {
+std::vector<float> Boundary_detection::get_theoretical_dist() {
+    std::vector<float> dist(this->num_of_scan);
+    for (int i = 0; i < dist.size(); i++) {
         float angle = -(this->angles[i] - this->tilted_angle) * PI / 180.0;
         dist[i] = this->sensor_height / std::sin(angle);
     }
@@ -299,23 +338,18 @@ void Boundary_detection::pointcloud_preprocessing()
     reset();
 }
 
-float Boundary_detection::dist_between(const vector<float> &p1, const vector<float> &p2)
-{
-    return std::sqrt((p2[0] - p1[0]) * (p2[0] - p1[0]) + (p2[1] - p1[1]) * (p2[1] - p1[1]) + (p2[2] - p1[2]) * (p2[2] - p1[2]));
+float Boundary_detection::dist_between(const std::vector<float>& p1, const std::vector<float>& p2) {
+    return std::sqrt((p2[0]-p1[0])*(p2[0]-p1[0]) + (p2[1]-p1[1])*(p2[1]-p1[1]) + (p2[2]-p1[2])*(p2[2]-p1[2]));
 }
 
-vector<bool> Boundary_detection::continuous_filter(int scan_id)
-{
+std::vector<bool> Boundary_detection::continuous_filter(int scan_id) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
-    vector<bool> is_continuous(n, true);
-    vector<float> thres(this->dist_to_origin.begin() + st, this->dist_to_origin.begin() + ed);
-    for (auto &t : thres)
-        t *= THETA_R * 7;
-    for (int i = 0; i < n - 1; i++)
-    {
-        if (dist_between(this->pointcloud[st + i], this->pointcloud[st + i + 1]) > thres[i])
-        {
+    std::vector<bool> is_continuous(n, true);
+    std::vector<float> thres(this->dist_to_origin.begin()+st, this->dist_to_origin.begin()+ed);
+    for (auto& t : thres) t *= THETA_R * 7;
+    for (int i = 0; i < n-1; i++) {
+        if (dist_between(this->pointcloud[st+i], this->pointcloud[st+i+1]) > thres[i]) {
             is_continuous[i] = false;
             is_continuous[i + 1] = false;
             this->is_continuous[st + i] = false;
@@ -334,16 +368,14 @@ float Boundary_detection::get_angle(const vector<float> &v1, const vector<float>
     return std::acos(dot_product / (mag_1 * mag_2)) * 180.0 / PI;
 }
 
-vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, float angle_thres /* =150.0f */)
-{
+std::vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, float angle_thres /* =150.0f */) {
     int n = this->ranges[scan_id][1] - this->ranges[scan_id][0];
     int st = this->ranges[scan_id][0];
-    vector<float> angles(n, 180.0f);
-    if (n - (2 * k) < 0)
-        return angles;
-
-    vector<vector<float>> direction_vecs_right(n, vector<float>(3, 0.0f));
-    vector<vector<float>> direction_vecs_left(n, vector<float>(3, 0.0f));
+    std::vector<float> angles(n, 180.0f);
+    if (n - (2 * k) < 0) return angles; 
+    
+    std::vector<std::vector<float>> direction_vecs_right(n, std::vector<float>(3, 0.0f));
+    std::vector<std::vector<float>> direction_vecs_left(n, std::vector<float>(3, 0.0f));
 
     // might need optimize
     // normalize ?
@@ -374,57 +406,45 @@ vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, fl
     return angles;
 }
 
-vector<bool> get_local_min(const vector<float> &vec)
-{
-    vector<int> first_derivative(vec.size() - 1);
-    for (int i = 0; i < first_derivative.size(); i++)
-    {
-        auto diff = vec[i + 1] - vec[i];
-        if (diff > 0.0f)
-            first_derivative[i] = 1;
-        else if (diff < 0.0f)
-            first_derivative[i] = -1;
-        else
-            first_derivative[i] = 0;
+std::vector<bool> get_local_min(const vector<float>& vec) {
+    std::vector<int> first_derivative(vec.size()-1);
+    for (int i = 0; i < first_derivative.size(); i++) {
+        auto diff = vec[i+1] - vec[i];
+        if (diff > 0.0f) first_derivative[i] = 1;
+        else if (diff < 0.0f) first_derivative[i] = -1;
+        else first_derivative[i] = 0;
     }
-    vector<bool> second_derivative(first_derivative.size() - 1, false);
-    for (int i = 0; i < second_derivative.size(); i++)
-    {
-        auto diff = first_derivative[i + 1] - first_derivative[i];
-        if (diff > 0)
-            second_derivative[i] = true;
+    std::vector<bool> second_derivative(first_derivative.size()-1, false);
+    for (int i = 0; i < second_derivative.size(); i++) {
+        auto diff = first_derivative[i+1] - first_derivative[i];
+        if (diff > 0) second_derivative[i] = true;
     }
     second_derivative.insert(second_derivative.begin(), false);
     second_derivative.push_back(false);
     return second_derivative;
 }
 
-vector<bool> Boundary_detection::local_min_of_direction_change(int scan_id)
-{
+std::vector<bool> Boundary_detection::local_min_of_direction_change(int scan_id) {
     int st = this->ranges[scan_id][0];
     auto direction = direction_change_filter(scan_id, 8);
-    vector<bool> direction_change_local_min(direction.size());
-    vector<bool> direction_change(direction.size(), false);
-    for (int i = 0; i < direction.size(); i++)
-    {
-        if (direction[i] < 150.0f)
-            direction_change[i] = true;
+    std::vector<bool> direction_change_local_min(direction.size());
+    std::vector<bool> direction_change(direction.size(), false); 
+    for (int i = 0; i < direction.size(); i++) {
+        if (direction[i] < 150.0f) direction_change[i] = true;
     }
-    vector<bool> local_min = get_local_min(direction);
-    for (int i = 0; i < direction.size(); i++)
-    {
+    std::vector<bool> local_min = get_local_min(direction);
+    for (int i = 0; i < direction.size(); i++) {
         direction_change_local_min[i] = direction_change[i] && local_min[i];
         this->is_local_min[st + i] = direction_change[i] && local_min[i];
     }
     return direction_change_local_min;
 }
 
-vector<int> Boundary_detection::elevation_filter(int scan_id)
-{
+std::vector<int> Boundary_detection::elevation_filter(int scan_id) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
-    vector<int> is_elevate(n, 0);
-    vector<float> z_diff(n, 0.0f);
+    std::vector<int> is_elevate(n, 0);
+    std::vector<float> z_diff(n, 0.0f); 
     float thres_z = 0.005;
 
     if (scan_id % 2 == 0)
@@ -448,7 +468,7 @@ vector<int> Boundary_detection::elevation_filter(int scan_id)
         if (z_diff[i] > thres_z)
             is_elevate[i] = 1;
     }
-    vector<int> filter({1, 1, 1, 1, 1, 1, 1, 1, 1});
+    std::vector<int> filter({1,1,1,1,1,1,1,1,1});
     auto res = conv(is_elevate, filter);
     for (int i = 0; i < is_elevate.size(); i++)
     {
@@ -465,18 +485,15 @@ vector<int> Boundary_detection::elevation_filter(int scan_id)
     return is_elevate;
 }
 
-void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<int> &elevation, vector<bool> &edge_start, vector<bool> &edge_end)
-{
+void Boundary_detection::edge_filter_from_elevation(int scan_id, const std::vector<int>& elevation, std::vector<bool>& edge_start, std::vector<bool>& edge_end) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
     int k = 7;
-    vector<int> f_start, f_end;
-    if (n <= (2 * k))
-        return;
-    if (scan_id % 2 == 0)
-    { // left scan
-        f_start = {-1, -1, -1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1};
-        f_end = {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<int> f_start, f_end;
+    if (n <= (2 * k)) return; 
+    if (scan_id % 2 == 0) { // left scan
+        f_start = {-1,-1,-1,-1,-1,-1,-1,1,1,1,1,1,1,1,1};
+        f_end = {1,1,1,1,1,1,1,1,0,0,0,0,0,0,0};
     }
     else
     {
@@ -500,11 +517,10 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const vector<in
     }
 }
 
-vector<bool> Boundary_detection::obstacle_extraction(int scan_id)
-{
+std::vector<bool> Boundary_detection::obstacle_extraction(int scan_id) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
-    vector<bool> is_obstacle(n, false);
+    std::vector<bool> is_obstacle(n, false);
     float height_thres = 0.3, dist = 0.0f;
     int ring = scan_id / 2;
     if (scan_id % 2 == 0)
@@ -635,8 +651,8 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
 
     // elevation filter
     auto is_elevating = elevation_filter(scan_id);
-    vector<bool> edge_start(is_elevating.size(), false);
-    vector<bool> edge_end(is_elevating.size(), false);
+    std::vector<bool> edge_start(is_elevating.size(), false); 
+    std::vector<bool> edge_end(is_elevating.size(), false);
     edge_filter_from_elevation(scan_id, is_elevating, edge_start, edge_end);
 
     // local min of direction change
@@ -785,8 +801,7 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
     }
 }
 
-vector<bool> Boundary_detection::run_detection(bool vis)
-{
+std::vector<bool> Boundary_detection::run_detection(bool vis) {
     // Create Viewer
     cv::viz::Viz3d viewer("Velodyne");
     // Register Keyboard Callback
@@ -798,31 +813,78 @@ vector<bool> Boundary_detection::run_detection(bool vis)
         }
     }, &viewer);
 
-    if (this->isPCAP)
-    {
+    if (this->isPCAP) {
+        std::vector<cv::Vec3f> temp = {cv::Vec3f(0, 0, 0)};
         velodyne::VLP16Capture capture(this->directory);
         if (!capture.isOpen())
         {
             std::cerr << "Can't open VelodyneCapture." << std::endl;
             return {};
         }
-        while (capture.isRun() /*&& !viewer.wasStopped()*/)
-        {
+        while(capture.isRun() && !viewer.wasStopped()){
+            high_resolution_clock::time_point start = high_resolution_clock::now();
+/*             while (!this->firstRun && true) {
+                temp = this->radar_pointcloud;
+                if (!temp.empty() && this->secondRun) {
+                    if (isnanf(temp.front()[0])) {
+                        usleep(10000);
+                    } else {
+                        this->secondRun = false;
+                        break;
+                    }
+                } else if (temp.empty()) {
+                    usleep(10000);     
+                } else {
+                    break;
+                }
+            } */
             std::vector<velodyne::Laser> lasers;
             capture >> lasers;
             if (lasers.empty())
             {
                 continue;
             }
+            high_resolution_clock::time_point t1 = high_resolution_clock::now();
             laser_to_cartesian(lasers);
             pointcloud_preprocessing();
             for (int i = 0; i < 32; i++)
             {
                 find_boundary_from_half_scan(i, 8);
             }
-            auto leftLine = run_RANSAC(0);
-            auto rightLine = run_RANSAC(1);
+            // auto leftLine = run_RANSAC(0);
+            // auto rightLine = run_RANSAC(1);
             // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+            
+            auto duration = duration_cast<milliseconds>(high_resolution_clock::now() - t1).count();
+            std::cout << "Lidar Time: " << duration << std::endl;
+            t1 = high_resolution_clock::now();
+            int display_duration = 0;
+            /* if (!firstRun) {
+                temp = this->radar_pointcloud;
+                this->fuser.addRadarData(temp);
+            } */
+            auto fusionStart = high_resolution_clock::now();
+            std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
+            std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
+            std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
+            std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+            std::cout << "Fusion Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - fusionStart).count() << std::endl;
+            duration = duration_cast<milliseconds>(high_resolution_clock::now() - t1).count();
+            t1 = high_resolution_clock::now();
+            int timeRemaining = std::max(30 - int(duration), 10);
+            while (true) {
+                if (timeRemaining <= display_duration) {
+                    break;
+                } else {
+                    display_duration = int(duration_cast<milliseconds>(high_resolution_clock::now() - t1).count());
+                    if (vis) update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
+                }    
+            }
+            std::cout << "Total Time: " << duration_cast<milliseconds>(high_resolution_clock::now() - start).count() << std::endl;
+            if (this->firstRun) {
+                this->firstRun = false;
+                this->secondRun = true;
+            }
         }
     }
     else
@@ -848,7 +910,7 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
                 this->object_detector->call_method("run", filename);
-                // if (vis) update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // if (vis) update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "velodynes/")
@@ -879,7 +941,7 @@ vector<bool> Boundary_detection::run_detection(bool vis)
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1);
                 if (vis)
-                    update_viewer(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                    update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
                 #if USE_OBJECT_MASKING
                 cv::imshow("image", img);
                 cv::waitKey(1);
@@ -894,20 +956,20 @@ void Boundary_detection::reset()
 {
     this->dist_to_origin = get_dist_to_origin();
     this->theoretical_dist = get_theoretical_dist();
-    this->is_boundary = vector<bool>(this->pointcloud.size(), false);
-    this->is_continuous = vector<bool>(this->pointcloud.size(), true);
-    this->is_elevating = vector<bool>(this->pointcloud.size(), false);
-    this->is_changing_angle = vector<bool>(this->pointcloud.size(), false);
-    this->is_local_min = vector<bool>(this->pointcloud.size(), false);
-    this->is_edge_start = vector<bool>(this->pointcloud.size(), false);
-    this->is_edge_end = vector<bool>(this->pointcloud.size(), false);
-    this->is_obstacle = vector<bool>(this->pointcloud.size(), false);
-    this->is_objects = vector<bool>(this->pointcloud.size(), false);
+    this->is_boundary = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_continuous = std::vector<bool>(this->pointcloud.size(), true);
+    this->is_elevating = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_changing_angle = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_local_min = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_edge_start = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_edge_end = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_obstacle = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_objects = std::vector<bool>(this->pointcloud.size(), false);
 }
 
 bool Boundary_detection::get_calibration(string filename /*="calibration.yaml"*/)
 {
-    this->lidar_to_image = vector<vector<float>>(3, vector<float>(4));
+    this->lidar_to_image = std::vector<std::vector<float>>(3, std::vector<float>(4));
     this->lidar_to_image[0] = {6.07818353e+02, -7.79647962e+02, -8.75258198e+00, 2.24308511e+01};
     this->lidar_to_image[1] = {5.12565990e+02, 1.31878337e+01, -7.70608644e+02, -1.69836140e+02};
     this->lidar_to_image[2] = {9.99862028e-01, -8.56083140e-03, 1.42350786e-02, 9.02290525e-03};
@@ -919,7 +981,7 @@ bool Boundary_detection::get_calibration(string filename /*="calibration.yaml"*/
  */
 vector<vector<float>> Boundary_detection::get_image_points()
 {
-    vector<vector<float>> image_points(this->pointcloud.size(), vector<float>(2));
+    vector<vector<float>> image_points(this->pointcloud.size(), std::vector<float>(2));
     for (int i = 0; i < image_points.size(); i++)
     {
         float scale = lidar_to_image[2][0] * this->pointcloud_unrotated[i][0] + lidar_to_image[2][1] * this->pointcloud_unrotated[i][1] + lidar_to_image[2][2] * this->pointcloud_unrotated[i][2] + lidar_to_image[2][3];
@@ -929,7 +991,7 @@ vector<vector<float>> Boundary_detection::get_image_points()
     return image_points;
 }
 
-bool Boundary_detection::is_in_bounding_box(const vector<float> &img_point, const vector<vector<int>> &bounding_boxes)
+bool Boundary_detection::is_in_bounding_box(const std::vector<float> &img_point, const std::vector<std::vector<int>> &bounding_boxes)
 {
     for (auto &box : bounding_boxes)
     {
@@ -942,7 +1004,7 @@ bool Boundary_detection::is_in_bounding_box(const vector<float> &img_point, cons
 bool Boundary_detection::find_objects_from_image(string filename, cv::Mat &img)
 {
     PyObject *data = object_detector->call_method("run", filename);
-    vector<vector<int>> bounding_boxes;
+    std::vector<std::vector<int>> bounding_boxes;
     if (data)
     {
         auto box = object_detector->listTupleToVector(data);
@@ -991,7 +1053,7 @@ string Boundary_detection::get_filename_image(const string &root_dir, int frame_
 
 void Boundary_detection::print_pointcloud(const vector<vector<float>> &pointcloud)
 {
-    vector<int> count(16, 0);
+    std::vector<int> count(16, 0);
     int cnt = 0;
     for (auto &p : pointcloud)
     {
@@ -1003,12 +1065,28 @@ void Boundary_detection::print_pointcloud(const vector<vector<float>> &pointclou
     cout << endl;
 }
 
-vector<vector<float>> &Boundary_detection::get_pointcloud()
-{
-    return this->pointcloud;
+std::vector<std::vector<float>>& Boundary_detection::get_pointcloud() {
+    return this->pointcloud; 
 }
 
-vector<bool> &Boundary_detection::get_result()
-{
+std::vector<bool>& Boundary_detection::get_result() {
     return this->is_boundary;
+}
+
+
+void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned int interval) {
+    std::thread([func, interval]() {
+        while (true) {
+            auto x = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval);
+            func();
+            std::this_thread::sleep_until(x);
+        }
+    }).detach();
+}
+void Boundary_detection::expose() {
+    this->mem_mutex.lock();
+    boost::interprocess::managed_shared_memory segment{boost::interprocess::open_only, "radar_vector"};
+    radar_shared *shared = segment.find<radar_shared>("radar_shared").first;
+    this->radar_pointcloud.assign(shared->begin(), shared->end());
+    this->mem_mutex.unlock();
 }

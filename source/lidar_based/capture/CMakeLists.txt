@@ -78,7 +78,7 @@ if( NO_EMPTY_RETURNS )
 endif()
 
 # Find Package OpenCV
-set( OpenCV_DIR "C:/Program Files/opencv/build" )
+set( OpenCV_DIR "/opt/opencv/build" )
 set( OpenCV_STATIC OFF )
 find_package( OpenCV REQUIRED )
 

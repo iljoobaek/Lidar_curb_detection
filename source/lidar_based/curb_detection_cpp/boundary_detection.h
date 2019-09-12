@@ -8,18 +8,26 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
+#include <Python.h>
 
 #include <Eigen/Dense>
 
-#include "VelodyneCapture.h"
+#include <boost/interprocess/managed_shared_memory.hpp>
+#include <boost/interprocess/containers/vector.hpp>
+#include <boost/interprocess/allocators/allocator.hpp>
+#include <boost/interprocess/sync/scoped_lock.hpp>
+#include <boost/interprocess/sync/named_mutex.hpp>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
 
+#include "VelodyneCapture.h"
+
 #include "GRANSAC.hpp"
 #include "LineModel.hpp"
 
-#include <Python.h>
+#include "Fusion.cpp"
 
 #define PI 3.14159265
 #define THETA_R 0.00356999
@@ -107,24 +115,27 @@ private:
     PyObject *pName, *pModule, *python_class, *object;
 };
 
+typedef boost::interprocess::allocator<cv::Vec3f, boost::interprocess::managed_shared_memory::segment_manager>  ShmemAllocator;
+typedef boost::interprocess::vector<cv::Vec3f, ShmemAllocator> radar_shared;
+
 class Boundary_detection {
 public:
     Boundary_detection(string dir, int id, float tilted_angle, float sensor_height): directory(dir), frame_id(id), num_of_scan(16) {
-        this->ranges = vector<vector<int>>(32, vector<int>(2));
+        this->ranges = std::vector<std::vector<int>>(32, std::vector<int>(2));
         this->tilted_angle = tilted_angle;
         this->sensor_height = sensor_height;
         this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
                         1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
+        //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
-        this->img_width = 1280;
-        this->img_height = 1024;
         this->object_detector = new Object_detection();
         this->get_calibration();
+        this->fuser = fusion::FusionController();
     } 
     
     void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
-    vector<vector<float>> read_bin(string filename);
+    std::vector<std::vector<float>> read_bin(string filename);
     void rotate_and_translate();
     void max_height_filter(float max_height);
     void reorder_pointcloud();
@@ -132,58 +143,71 @@ public:
     void rearrange_pointcloud_sort();
     void pointcloud_preprocessing();
     
-    float dist_between(const vector<float>& p1, const vector<float>& p2);
-    vector<float> get_dist_to_origin();
-    vector<float> get_theoretical_dist();
-    vector<bool> continuous_filter(int scan_id);
-    float get_angle(const vector<float>& v1, const vector<float>& v2);
-    vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
-    vector<bool> local_min_of_direction_change(int scan_id);
-    vector<int> elevation_filter(int scan_id);
-    void edge_filter_from_elevation(int scan_id, const vector<int>& elevation, vector<bool>& edge_start, vector<bool>& edge_end);
-    vector<bool> obstacle_extraction(int scan_id);
+    float dist_between(const std::vector<float>& p1, const std::vector<float>& p2);
+    std::vector<float> get_dist_to_origin();
+    std::vector<float> get_theoretical_dist();
+    std::vector<bool> continuous_filter(int scan_id);
+    float get_angle(const std::vector<float>& v1, const std::vector<float>& v2);
+    std::vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
+    std::vector<bool> local_min_of_direction_change(int scan_id);
+    std::vector<int> elevation_filter(int scan_id);
+    void edge_filter_from_elevation(int scan_id, const std::vector<int>& elevation, std::vector<bool>& edge_start, std::vector<bool>& edge_end);
+    std::vector<bool> obstacle_extraction(int scan_id);
     std::vector<cv::Point2f> run_RANSAC(int side, int max_per_scan=10);
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
 
     void find_boundary_from_half_scan(int scan_id, int k);
-    vector<bool> run_detection(bool vis=false);
+    std::vector<bool> run_detection(bool vis=false);
 
     bool get_calibration(string filename="calibration.yaml");
-    vector<vector<float>> get_image_points();
-    bool is_in_bounding_box(const vector<float>& point, const vector<vector<int>>& bounding_boxes);
+    std::vector<std::vector<float>> get_image_points();
+    bool is_in_bounding_box(const std::vector<float>& point, const std::vector<std::vector<int>>& bounding_boxes);
     bool find_objects_from_image(string filename, cv::Mat& img);
 
     string get_filename_pointcloud(const string& root_dir, int frame_idx);
     string get_filename_image(const string& root_dir, int frame_idx);
-    void print_pointcloud(const vector<vector<float>>& pointcloud);
+    void print_pointcloud(const std::vector<std::vector<float>>& pointcloud);
 
     void reset();    
-    vector<vector<float>>& get_pointcloud();
-    vector<bool>& get_result();
+    std::vector<std::vector<float>>& get_pointcloud();
+    std::vector<bool>& get_result();
+
+    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result);
+    void timedFunction(std::function<void(void)> func, unsigned int interval);
+    void expose();
+    
+    boost::interprocess::named_mutex 
+            mem_mutex{
+                boost::interprocess::open_or_create, 
+                "radar_mutex"
+            };
 
 private:
     Object_detection* object_detector;
     bool isPCAP;
+    bool firstRun = true;
+    bool secondRun = false;
+    fusion::FusionController fuser;
     string directory;
     int frame_id;
     int num_of_scan;
     float tilted_angle;
     float sensor_height;
-    vector<float> angles;
-    vector<float> dist_to_origin;
-    vector<float> theoretical_dist;
-    vector<vector<float>> pointcloud;
-    vector<vector<float>> pointcloud_unrotated;
-    vector<bool> is_boundary;
-    vector<bool> is_continuous;
-    vector<bool> is_elevating;
-    vector<bool> is_changing_angle;
-    vector<bool> is_local_min;
-    vector<bool> is_edge_start;
-    vector<bool> is_edge_end;
-    vector<bool> is_obstacle;
-    vector<bool> is_objects;
-    vector<vector<int>> ranges;
-    vector<vector<float>> lidar_to_image;
-    int img_width, img_height;
+    std::vector<float> angles;
+    std::vector<float> dist_to_origin;
+    std::vector<float> theoretical_dist;
+    std::vector<std::vector<float>> pointcloud;
+    std::vector<std::vector<float>> pointcloud_unrotated;
+    std::vector<bool> is_boundary;
+    std::vector<bool> is_continuous;
+    std::vector<bool> is_elevating;
+    std::vector<bool> is_changing_angle;
+    std::vector<bool> is_local_min;
+    std::vector<bool> is_edge_start;
+    std::vector<bool> is_edge_end;
+    std::vector<bool> is_obstacle;
+    std::vector<bool> is_objects;
+    std::vector<std::vector<int>> ranges;
+    std::vector<std::vector<float>> lidar_to_image;
+    std::vector<cv::Vec3f> radar_pointcloud;
 };

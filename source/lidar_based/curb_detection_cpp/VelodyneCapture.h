@@ -205,7 +205,7 @@ namespace velodyne
                 // Convert PCAP_NETMASK_UNKNOWN to 0xffffffff
                 struct bpf_program filter;
                 std::ostringstream oss;
-                if( pcap_compile( pcap, &filter, oss.str().c_str(), 0, 0xffffffff ) == -1 ){
+                if( pcap_compile( pcap, &filter, const_cast<char*>(oss.str().c_str()), 0, 0xffffffff ) == -1 ){
                     throw std::runtime_error( pcap_geterr( pcap ) );
                     return false;
                 }
