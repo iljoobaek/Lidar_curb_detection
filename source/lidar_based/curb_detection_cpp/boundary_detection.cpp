@@ -1,6 +1,6 @@
 #include "boundary_detection.h"
 
-#define USE_OBJECT_MASKING false
+#define USE_OBJECT_MASKING true
 
 template <typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
@@ -463,7 +463,7 @@ std::vector<int> Boundary_detection::elevation_filter(int scan_id) {
     }
     for (int i = 0; i < n; i++)
     {
-        if (this->pointcloud[6][st + i] < 3.0)
+        if (this->pointcloud[st + i][6] < 3.0)
             thres_z = 0.002;
         if (z_diff[i] > thres_z)
             is_elevate[i] = 1;
@@ -697,10 +697,19 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        #if USE_OBJECT_MASKING
+                        bool is_masked = false;
                         for (int j = cur_end; j <= cur_start; j++)
                         {
-                            if (this->is_objects[st + j]) break;
+                            if (this->is_objects[st + j]) 
+                            {
+                                is_masked = true;
+                                cout << "Result being masked!\n";
+                                break;
+                            }
                         }
+                        if (is_masked) break;
+                        #endif
                         for (int j = cur_end; j <= cur_start; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -711,10 +720,17 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     if (cur_height > 0.1)
                     {
                         #if USE_OBJECT_MASKING
+                        bool is_masked = false;
                         for (int j = cur_end; j <= cur_start; j++)
                         {
-                            if (this->is_objects[st + j]) break;
+                            if (this->is_objects[st + j]) 
+                            {
+                                is_masked = true;
+                                cout << "Result being masked!\n";
+                                break;
+                            }
                         }
+                        if (is_masked) break;
                         #endif
                         for (int j = cur_end; j <= cur_start; j++)
                         {
@@ -766,10 +782,17 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     if (cur_height > 0.05 && edge_end[i])
                     {
                         #if USE_OBJECT_MASKING
+                        bool is_masked = false;
                         for (int j = cur_start; j <= cur_end; j++)
                         {
-                            if (this->is_objects[st + j]) break;
+                            if (this->is_objects[st + j]) 
+                            {
+                                is_masked = true;
+                                cout << "Result being masked!\n";
+                                break;
+                            }
                         }
+                        if (is_masked) break;
                         #endif
                         for (int j = cur_start; j <= cur_end; j++)
                         {
@@ -780,10 +803,19 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                     }
                     if (cur_height > 0.1)
                     {
+                        #if USE_OBJECT_MASKING
+                        bool is_masked = false;
                         for (int j = cur_start; j <= cur_end; j++)
                         {
-                            if (this->is_objects[st + j]) break;
+                            if (this->is_objects[st + j]) 
+                            {
+                                is_masked = true;
+                                cout << "Result being masked!\n";
+                                break;
+                            }
                         }
+                        if (is_masked) break;
+                        #endif
                         for (int j = cur_start; j <= cur_end; j++)
                         {
                             this->is_boundary[st + j] = true;
@@ -889,6 +921,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
     }
     else
     {
+        std::vector<cv::Vec3f> temp = {cv::Vec3f(0, 0, 0)};
         vector<cv::Point2f> leftLine, rightLine;
         if (this->directory == "test1/")
         {
@@ -919,8 +952,8 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             for (int i = 0; i < 1200; i++)
             {
                 cout << "Frame: " << i << endl;
-                // string folder_name = "autoware-20190828123615/";
-                string folder_name = "autoware-20190828125749/";
+                string folder_name = "autoware-20190828123615/";
+                // string folder_name = "autoware-20190828125749/";
                 string filename_velodyne = get_filename_pointcloud(folder_name, i);
                 string filename_image = get_filename_image(folder_name, i);
                 cv::Mat img = cv::imread(filename_image);
@@ -940,8 +973,14 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 }
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1);
-                if (vis)
-                    update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
+                std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
+                std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
+                std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+                if (vis) {
+                    update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
+                    //update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                }
                 #if USE_OBJECT_MASKING
                 cv::imshow("image", img);
                 cv::waitKey(1);

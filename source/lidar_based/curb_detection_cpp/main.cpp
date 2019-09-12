@@ -17,7 +17,7 @@ int main( int argc, char* argv[] ) {
         vector<bool> result = detection->run_detection(true);    
     }
     else {
-        std::unique_ptr<Boundary_detection> detection(new Boundary_detection("kesselRun.pcap", 0, 16.0, 0.5));
+        std::unique_ptr<Boundary_detection> detection(new Boundary_detection("kesselRun.pcap", 0, 16.0, 0.5))t ;
         vector<bool> result = detection->run_detection(true);    
     }
     */
