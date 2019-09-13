@@ -32,6 +32,7 @@
 #define PI 3.14159265
 #define THETA_R 0.00356999
 #define MIN_CURB_HEIGHT 0.05
+#define USE_OBJECT_MASKING true
 
 using std::cout;
 using std::endl;
@@ -82,14 +83,14 @@ public:
         cout << "Close Python interpreter\n";
     }
 
-    PyObject* call_method(char* method, string filename) {
+    PyObject* call_method(char *method, string filename) {
     	PyObject* res;
         res = PyObject_CallMethod(this->object, method, "(s)", filename.c_str());
         if (!res) PyErr_Print();
         return res;
     }
 
-    vector<float> listTupleToVector(PyObject* data_in) {
+    vector<float> listTupleToVector(PyObject *data_in) {
         vector<float> data;
         if (PyTuple_Check(data_in)) {
             for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
@@ -129,12 +130,14 @@ public:
         //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         if (dir.find(".pcap") != string::npos) this->isPCAP = true;
         else this->isPCAP = false;
-        this->object_detector = new Object_detection();
+        #if USE_OBJECT_MASKING
+        this->object_detector = std::unique_ptr<Object_detection>(new Object_detection());
+        #endif
         this->get_calibration();
         this->fuser = fusion::FusionController();
     } 
     
-    void laser_to_cartesian(std::vector<velodyne::Laser>& lasers);
+    void laser_to_cartesian(std::vector<velodyne::Laser> &lasers);
     std::vector<std::vector<float>> read_bin(string filename);
     void rotate_and_translate();
     void max_height_filter(float max_height);
@@ -143,15 +146,15 @@ public:
     void rearrange_pointcloud_sort();
     void pointcloud_preprocessing();
     
-    float dist_between(const std::vector<float>& p1, const std::vector<float>& p2);
+    float dist_between(const std::vector<float> &p1, const std::vector<float> &p2);
     std::vector<float> get_dist_to_origin();
     std::vector<float> get_theoretical_dist();
     std::vector<bool> continuous_filter(int scan_id);
-    float get_angle(const std::vector<float>& v1, const std::vector<float>& v2);
+    float get_angle(const std::vector<float> &v1, const std::vector<float> &v2);
     std::vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
     std::vector<bool> local_min_of_direction_change(int scan_id);
     std::vector<int> elevation_filter(int scan_id);
-    void edge_filter_from_elevation(int scan_id, const std::vector<int>& elevation, std::vector<bool>& edge_start, std::vector<bool>& edge_end);
+    void edge_filter_from_elevation(int scan_id, const std::vector<int> &elevation, std::vector<bool> &edge_start, std::vector<bool> &edge_end);
     std::vector<bool> obstacle_extraction(int scan_id);
     std::vector<cv::Point2f> run_RANSAC(int side, int max_per_scan=10);
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
@@ -161,18 +164,18 @@ public:
 
     bool get_calibration(string filename="calibration.yaml");
     std::vector<std::vector<float>> get_image_points();
-    bool is_in_bounding_box(const std::vector<float>& point, const std::vector<std::vector<int>>& bounding_boxes);
-    bool find_objects_from_image(string filename, cv::Mat& img);
+    bool is_in_bounding_box(const std::vector<float> &point, const std::vector<std::vector<int>> &bounding_boxes);
+    bool find_objects_from_image(string filename, cv::Mat &img);
 
-    string get_filename_pointcloud(const string& root_dir, int frame_idx);
-    string get_filename_image(const string& root_dir, int frame_idx);
-    void print_pointcloud(const std::vector<std::vector<float>>& pointcloud);
+    string get_filename_pointcloud(const string &root_dir, int frame_idx);
+    string get_filename_image(const string &root_dir, int frame_idx);
+    void print_pointcloud(const std::vector<std::vector<float>> &pointcloud);
 
     void reset();    
     std::vector<std::vector<float>>& get_pointcloud();
     std::vector<bool>& get_result();
 
-    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result);
+    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result);
     void timedFunction(std::function<void(void)> func, unsigned int interval);
     void expose();
     
@@ -183,7 +186,7 @@ public:
             };
 
 private:
-    Object_detection* object_detector;
+    std::unique_ptr<Object_detection> object_detector;
     bool isPCAP;
     bool firstRun = true;
     bool secondRun = false;

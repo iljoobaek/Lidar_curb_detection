@@ -1,7 +1,5 @@
 #include "boundary_detection.h"
 
-#define USE_OBJECT_MASKING true
-
 template <typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
 {
@@ -48,7 +46,7 @@ vector<cv::Point3d> get_line(std::vector<cv::Point2f> &points, bool isPCAP)
 }
 
     // Show Point Cloud
-std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const std::vector<std::vector<float>>& pointcloud, const std::vector<bool>& result) {
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result) {
     std::vector<cv::Vec3f> buffer(pointcloud.size());
     std::vector<cv::Vec3f> lineBuffer;
     for (int i = 0; i < pointcloud.size(); i++) {
@@ -64,7 +62,7 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLidarBuffers(const st
     return buffers;
 }
 
-void update_viewer_lidar(const vector<vector<float>> &pointcloud, const vector<bool> &result, std::vector<cv::Point2f> &leftLine, std::vector<cv::Point2f> &rightLine, cv::viz::Viz3d viewer, bool isPCAP)
+void update_viewer_lidar(const vector<vector<float>> &pointcloud, const vector<bool> &result, std::vector<cv::Point2f> &leftLine, std::vector<cv::Point2f> &rightLine, cv::viz::Viz3d &viewer, bool isPCAP)
 {
     std::vector<cv::Vec3f> buffer(pointcloud.size());
     std::vector<cv::Vec3b> colors(pointcloud.size());
@@ -99,7 +97,7 @@ void update_viewer_lidar(const vector<vector<float>> &pointcloud, const vector<b
     viewer.spinOnce();
 }
 
-void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv::viz::WLine>& lines, std::vector<cv::viz::WText3D>& confidences, std::vector<cv::Vec3f>& radar_pointcloud, std::vector<cv::viz::WPolyLine>& thirdOrder, cv::viz::Viz3d viewer) {
+void update_viewer(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<cv::viz::WLine> &lines, std::vector<cv::viz::WText3D> &confidences, std::vector<cv::Vec3f> &radar_pointcloud, std::vector<cv::viz::WPolyLine> &thirdOrder, cv::viz::Viz3d &viewer) {
     if (buffers[0].empty()) {return;}
     // Create Widget
     cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[0].size()), 1, CV_32FC3, &buffers[0][0]);
@@ -128,7 +126,7 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>>& buffers, std::vector<cv:
 }
 
 
-void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser>& lasers) {
+void Boundary_detection::laser_to_cartesian(std::vector<velodyne::Laser> &lasers) {
     this->pointcloud.clear();
     for (int i = 0; i < lasers.size(); i++)
     {
@@ -216,19 +214,26 @@ void Boundary_detection::rotate_and_translate()
             float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + this->sensor_height;
             point[0] = x;
             point[2] = z;
+            // Rotate along z axis to match the coordinates from pcap / velodyne capture
+            float xx = point[0] * std::cos(PI / 2) + point[1] * (-std::sin(PI / 2));
+            float yy = point[0] * std::sin(PI / 2) + point[1] * std::cos(PI / 2);
+            point[0] = xx;
+            point[1] = yy;
         }
     }
 }
 
 void Boundary_detection::max_height_filter(float max_height)
 {
+    if (this->isPCAP) this->pointcloud_unrotated = std::vector<std::vector<float>>(this->pointcloud.begin(), this->pointcloud.end());
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++)
     {
         if (this->pointcloud[i][2] < max_height)
         {
             this->pointcloud[cur] = this->pointcloud[i];
-            this->pointcloud_unrotated[cur++] = this->pointcloud_unrotated[i];
+            this->pointcloud_unrotated[cur] = this->pointcloud_unrotated[i];
+            cur++;
         }
     }
     this->pointcloud.erase(this->pointcloud.begin() + cur, this->pointcloud.end());
@@ -309,7 +314,7 @@ void Boundary_detection::rearrange_pointcloud() {
 
 void Boundary_detection::rearrange_pointcloud_sort() {
     std::sort(this->pointcloud.begin(), this->pointcloud.end(), 
-        [](const std::vector<float>& p1, const std::vector<float>& p2){
+        [](const std::vector<float> &p1, const std::vector<float> &p2){
             if (p1[4] == p2[4]) return p1[6] > p2[6];
             else return p1[4] < p2[4]; });
 }
@@ -338,7 +343,7 @@ void Boundary_detection::pointcloud_preprocessing()
     reset();
 }
 
-float Boundary_detection::dist_between(const std::vector<float>& p1, const std::vector<float>& p2) {
+float Boundary_detection::dist_between(const std::vector<float> &p1, const std::vector<float> &p2) {
     return std::sqrt((p2[0]-p1[0])*(p2[0]-p1[0]) + (p2[1]-p1[1])*(p2[1]-p1[1]) + (p2[2]-p1[2])*(p2[2]-p1[2]));
 }
 
@@ -406,7 +411,7 @@ std::vector<float> Boundary_detection::direction_change_filter(int scan_id, int 
     return angles;
 }
 
-std::vector<bool> get_local_min(const vector<float>& vec) {
+std::vector<bool> get_local_min(const vector<float> &vec) {
     std::vector<int> first_derivative(vec.size()-1);
     for (int i = 0; i < first_derivative.size(); i++) {
         auto diff = vec[i+1] - vec[i];
@@ -485,7 +490,7 @@ std::vector<int> Boundary_detection::elevation_filter(int scan_id) {
     return is_elevate;
 }
 
-void Boundary_detection::edge_filter_from_elevation(int scan_id, const std::vector<int>& elevation, std::vector<bool>& edge_start, std::vector<bool>& edge_end) {
+void Boundary_detection::edge_filter_from_elevation(int scan_id, const std::vector<int> &elevation, std::vector<bool> &edge_start, std::vector<bool>& edge_end) {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
     int k = 7;
@@ -949,45 +954,44 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
         else if (this->directory == "velodynes/")
         {
             cout << "------------------------------------------------------\n";
+            string folder_name = "autoware-20190828123615/";
+            // string folder_name = "autoware-20190828125749/";
             for (int i = 0; i < 1200; i++)
             {
                 cout << "Frame: " << i << endl;
-                string folder_name = "autoware-20190828123615/";
-                // string folder_name = "autoware-20190828125749/";
                 string filename_velodyne = get_filename_pointcloud(folder_name, i);
-                string filename_image = get_filename_image(folder_name, i);
-                cv::Mat img = cv::imread(filename_image);
-
                 this->pointcloud = read_bin(filename_velodyne);
                 pointcloud_preprocessing();
-                auto image_points = get_image_points();
+                
                 #if USE_OBJECT_MASKING
+                string filename_image = get_filename_image(folder_name, i);
+                cv::Mat img = cv::imread(filename_image);
+                auto image_points = get_image_points();
                 if (find_objects_from_image(filename_image, img))
                     cout << "--- moving objects detected---\n";
                 else
                     cout << "--- no objects detected---\n";
+                cv::imshow("image", img);
+                cv::waitKey(1);
                 #endif
                 for (int i = 0; i < 32; i++)
                 {
                     find_boundary_from_half_scan(i, 8);
                 }
-                // auto leftLine = run_RANSAC(0);
-                // auto rightLine = run_RANSAC(1);
                 std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
                 std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
                 std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
                 std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+                // leftLine = run_RANSAC(0);
+                // rightLine = run_RANSAC(1);
                 if (vis) {
                     update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
-                    //update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                    // update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
                 }
-                #if USE_OBJECT_MASKING
-                cv::imshow("image", img);
-                cv::waitKey(1);
-                #endif
             }
         }
     }
+    viewer.close();
     return {};
 }
 
@@ -1112,7 +1116,6 @@ std::vector<bool>& Boundary_detection::get_result() {
     return this->is_boundary;
 }
 
-
 void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned int interval) {
     std::thread([func, interval]() {
         while (true) {
@@ -1122,6 +1125,7 @@ void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned 
         }
     }).detach();
 }
+
 void Boundary_detection::expose() {
     this->mem_mutex.lock();
     boost::interprocess::managed_shared_memory segment{boost::interprocess::open_only, "radar_vector"};
