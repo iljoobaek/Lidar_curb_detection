@@ -143,6 +143,7 @@ public:
     void max_height_filter(float max_height);
     void reorder_pointcloud();
     void rearrange_pointcloud();
+    void rearrange_pointcloud_unrotated();
     void rearrange_pointcloud_sort();
     void pointcloud_preprocessing();
     
@@ -159,7 +160,7 @@ public:
     std::vector<cv::Point2f> run_RANSAC(int side, int max_per_scan=10);
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
 
-    void find_boundary_from_half_scan(int scan_id, int k);
+    void find_boundary_from_half_scan(int scan_id, int k, bool masking);
     std::vector<bool> run_detection(bool vis=false);
 
     bool get_calibration(string filename="calibration.yaml");
@@ -202,6 +203,7 @@ private:
     std::vector<std::vector<float>> pointcloud;
     std::vector<std::vector<float>> pointcloud_unrotated;
     std::vector<bool> is_boundary;
+    std::vector<bool> is_boundary_masking;
     std::vector<bool> is_continuous;
     std::vector<bool> is_elevating;
     std::vector<bool> is_changing_angle;

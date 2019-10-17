@@ -228,7 +228,7 @@ void Boundary_detection::max_height_filter(float max_height)
     if (this->isPCAP) this->pointcloud_unrotated = std::vector<std::vector<float>>(this->pointcloud.begin(), this->pointcloud.end());
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++)
-    {
+    { 
         if (this->pointcloud[i][2] < max_height)
         {
             this->pointcloud[cur] = this->pointcloud[i];
@@ -267,49 +267,81 @@ void Boundary_detection::reorder_pointcloud()
 
 void Boundary_detection::rearrange_pointcloud() {
     std::vector<std::vector<float>> pointcloud_copy(this->pointcloud.begin(), this->pointcloud.end());
+    std::vector<std::vector<float>> pointcloud_unrotated_copy(this->pointcloud_unrotated.begin(), this->pointcloud_unrotated.end());
     int cur_idx = 0;
     for (int i = 0; i < num_of_scan; i++)
     {
         this->ranges[i * 2][0] = cur_idx;
         auto iter = pointcloud_copy.begin();
-        if (this->isPCAP)
+        while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] > 0; })) != pointcloud_copy.end())
         {
-            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[0] < 0; })) != pointcloud_copy.end())
-            {
-                this->pointcloud[cur_idx++] = (*iter);
-                iter++;
-            }
+            this->pointcloud[cur_idx++] = (*iter);
+            iter++;
         }
-        else
-        {
-            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] > 0; })) != pointcloud_copy.end())
-            {
-                this->pointcloud[cur_idx++] = (*iter);
-                iter++;
-            }
-        }
+        // if (this->isPCAP)
+        // {
+        //     while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[0] < 0; })) != pointcloud_copy.end())
+        //     {
+        //         this->pointcloud[cur_idx++] = (*iter);
+        //         iter++;
+        //     }
+        // }
+        // else
+        // {
+        //     while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] > 0; })) != pointcloud_copy.end())
+        //     {
+        //         this->pointcloud[cur_idx++] = (*iter);
+        //         iter++;
+        //     }
+        // }
         this->ranges[i * 2][1] = cur_idx;
         this->ranges[i * 2 + 1][0] = cur_idx;
         iter = pointcloud_copy.begin();
-        if (this->isPCAP)
+        while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] <= 0; })) != pointcloud_copy.end())
         {
-            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[0] >= 0; })) != pointcloud_copy.end())
-            {
-                this->pointcloud[cur_idx++] = (*iter);
-                iter++;
-            }
+            this->pointcloud[cur_idx++] = (*iter);
+            iter++;
         }
-        else
-        {
-            while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] <= 0; })) != pointcloud_copy.end())
-            {
-                this->pointcloud[cur_idx++] = (*iter);
-                iter++;
-            }
-        }
+        // if (this->isPCAP)
+        // {
+        //     while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[0] >= 0; })) != pointcloud_copy.end())
+        //     {
+        //         this->pointcloud[cur_idx++] = (*iter);
+        //         iter++;
+        //     }
+        // }
+        // else
+        // {
+        //     while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] <= 0; })) != pointcloud_copy.end())
+        //     {
+        //         this->pointcloud[cur_idx++] = (*iter);
+        //         iter++;
+        //     }
+        // }
         this->ranges[i * 2 + 1][1] = cur_idx;
     }
-    // assert(cur_idx == this->pointcloud.size());
+    assert(cur_idx == this->pointcloud.size());
+}
+
+void Boundary_detection::rearrange_pointcloud_unrotated() {
+    std::vector<std::vector<float>> pointcloud_unrotated_copy(this->pointcloud_unrotated.begin(), this->pointcloud_unrotated.end());
+    int cur_idx2 = 0;
+    for (int i = 0; i < num_of_scan; i++)
+    {
+        auto iter2 = pointcloud_unrotated_copy.begin();
+        while ((iter2 = std::find_if(iter2, pointcloud_unrotated_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] > 0; })) != pointcloud_unrotated_copy.end())
+        {
+            this->pointcloud_unrotated[cur_idx2++] = (*iter2);
+            iter2++;
+        }
+        iter2 = pointcloud_unrotated_copy.begin();
+        while ((iter2 = std::find_if(iter2, pointcloud_unrotated_copy.end(), [&](const vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] <= 0; })) != pointcloud_unrotated_copy.end())
+        {
+            this->pointcloud_unrotated[cur_idx2++] = (*iter2);
+            iter2++;
+        }
+    }
+    assert(cur_idx2 == this->pointcloud_unrotated.size());
 }
 
 void Boundary_detection::rearrange_pointcloud_sort() {
@@ -340,6 +372,7 @@ void Boundary_detection::pointcloud_preprocessing()
     rotate_and_translate();
     max_height_filter(.45);
     rearrange_pointcloud();
+    rearrange_pointcloud_unrotated();
     reset();
 }
 
@@ -645,7 +678,7 @@ float Boundary_detection::distance_to_line(cv::Point2f p1, cv::Point2f p2)
     return std::abs(c) / std::sqrt(a * a + b * b);
 }
 
-void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
+void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool masking)
 {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
@@ -682,11 +715,6 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                 missed = 0.0f;
                 while (i - 1 >= 0)
                 {
-                    // if (is_objects[st+i]) 
-                    // {
-                    //     cout << "(is obj)";
-                    //     break;
-                    // }
                     if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT)
                     {
                         cur_start = i;
@@ -702,47 +730,65 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
-                        #if USE_OBJECT_MASKING
-                        bool is_masked = false;
-                        for (int j = cur_end; j <= cur_start; j++)
-                        {
-                            if (this->is_objects[st + j]) 
+                        if (masking) {
+                            bool is_masked = false;
+                            for (int j = cur_end; j <= cur_start; j++)
                             {
-                                is_masked = true;
-                                cout << "Result being masked!\n";
+                                if (this->is_objects[st + j]) 
+                                {
+                                    is_masked = true;
+                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                            }
+                            if (!is_masked) {
+                                for (int j = cur_end; j <= cur_start; j++)
+                                {
+                                    this->is_boundary_masking[st + j] = true;
+                                }
+                                found = true;
                                 break;
                             }
                         }
-                        if (is_masked) break;
-                        #endif
-                        for (int j = cur_end; j <= cur_start; j++)
-                        {
-                            this->is_boundary[st + j] = true;
+                        else {
+                            for (int j = cur_end; j <= cur_start; j++)
+                            {
+                                this->is_boundary[st + j] = true;
+                            }
+                            found = true;
+                            break;
                         }
-                        found = true;
-                        break;
                     }
                     if (cur_height > 0.1)
                     {
-                        #if USE_OBJECT_MASKING
-                        bool is_masked = false;
-                        for (int j = cur_end; j <= cur_start; j++)
-                        {
-                            if (this->is_objects[st + j]) 
+                        if (masking) {
+                            bool is_masked = false;
+                            for (int j = cur_end; j <= cur_start; j++)
                             {
-                                is_masked = true;
-                                cout << "Result being masked!\n";
+                                if (this->is_objects[st + j]) 
+                                {
+                                    is_masked = true;
+                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                            }
+                            if (!is_masked) {
+                                for (int j = cur_end; j <= cur_start; j++)
+                                {
+                                    this->is_boundary_masking[st + j] = true;
+                                }
+                                found = true;
                                 break;
                             }
                         }
-                        if (is_masked) break;
-                        #endif
-                        for (int j = cur_end; j <= cur_start; j++)
-                        {
-                            this->is_boundary[st + j] = true;
+                        else {
+                            for (int j = cur_end; j <= cur_start; j++)
+                            {
+                                this->is_boundary[st + j] = true;
+                            }
+                            found = true;
+                            break;
                         }
-                        found = true;
-                        break;
                     }
                     i--;
                 }
@@ -766,11 +812,6 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                 missed = 0.0f;
                 while (i + 1 < n)
                 {
-                    // if (is_objects[st+i]) 
-                    // {
-                    //     cout << "(is obj)";
-                    //     break;
-                    // }
                     if (is_direction_change[i] && edge_start[i] && cur_height < MIN_CURB_HEIGHT)
                     {
                         cur_start = i;
@@ -786,47 +827,65 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k)
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
-                        #if USE_OBJECT_MASKING
-                        bool is_masked = false;
-                        for (int j = cur_start; j <= cur_end; j++)
-                        {
-                            if (this->is_objects[st + j]) 
+                        if (masking) {
+                            bool is_masked = false;
+                            for (int j = cur_start; j <= cur_end; j++)
                             {
-                                is_masked = true;
-                                cout << "Result being masked!\n";
+                                if (this->is_objects[st + j]) 
+                                {
+                                    is_masked = true;
+                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                            }
+                            if (!is_masked) {
+                                for (int j = cur_start; j <= cur_end; j++)
+                                {
+                                    this->is_boundary_masking[st + j] = true;
+                                }
+                                found = true;
                                 break;
                             }
                         }
-                        if (is_masked) break;
-                        #endif
-                        for (int j = cur_start; j <= cur_end; j++)
-                        {
-                            this->is_boundary[st + j] = true;
+                        else {
+                            for (int j = cur_start; j <= cur_end; j++)
+                            {
+                                this->is_boundary[st + j] = true;
+                            }
+                            found = true;
+                            break;
                         }
-                        found = true;
-                        break;
                     }
                     if (cur_height > 0.1)
                     {
-                        #if USE_OBJECT_MASKING
-                        bool is_masked = false;
-                        for (int j = cur_start; j <= cur_end; j++)
-                        {
-                            if (this->is_objects[st + j]) 
+                        if (masking) {
+                            bool is_masked = false;
+                            for (int j = cur_start; j <= cur_end; j++)
                             {
-                                is_masked = true;
-                                cout << "Result being masked!\n";
+                                if (this->is_objects[st + j]) 
+                                {
+                                    is_masked = true;
+                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                            }
+                            if (!is_masked) {
+                                for (int j = cur_start; j <= cur_end; j++)
+                                {
+                                    this->is_boundary_masking[st + j] = true;
+                                }
+                                found = true;
                                 break;
                             }
                         }
-                        if (is_masked) break;
-                        #endif
-                        for (int j = cur_start; j <= cur_end; j++)
-                        {
-                            this->is_boundary[st + j] = true;
+                        else {
+                            for (int j = cur_start; j <= cur_end; j++)
+                            {
+                                this->is_boundary[st + j] = true;
+                            }
+                            found = true;
+                            break;
                         }
-                        found = true;
-                        break;
                     }
                     i++;
                 }
@@ -849,6 +908,15 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             static_cast<cv::viz::Viz3d *>(cookie)->close();
         }
     }, &viewer);
+    cv::viz::Viz3d viewer2("Velodyne2");
+    // Register Keyboard Callback
+    viewer.registerKeyboardCallback([](const cv::viz::KeyboardEvent &event, void *cookie) {
+        // Close Viewer
+        if (event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN)
+        {
+            static_cast<cv::viz::Viz3d *>(cookie)->close();
+        }
+    }, &viewer2);
 
     if (this->isPCAP) {
         std::vector<cv::Vec3f> temp = {cv::Vec3f(0, 0, 0)};
@@ -886,7 +954,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
             pointcloud_preprocessing();
             for (int i = 0; i < 32; i++)
             {
-                find_boundary_from_half_scan(i, 8);
+                find_boundary_from_half_scan(i, 8, false);
             }
             // auto leftLine = run_RANSAC(0);
             // auto rightLine = run_RANSAC(1);
@@ -939,7 +1007,7 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 pointcloud_preprocessing();
                 for (int i = 0; i < 32; i++)
                 {
-                    find_boundary_from_half_scan(i, 8);
+                    find_boundary_from_half_scan(i, 8, false);
                 }
                 // auto leftLine = run_RANSAC(0);
                 // auto rightLine = run_RANSAC(1);
@@ -954,8 +1022,9 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
         else if (this->directory == "velodynes/")
         {
             cout << "------------------------------------------------------\n";
-            string folder_name = "autoware-20190828123615/";
+            // string folder_name = "autoware-20190828123615/";
             // string folder_name = "autoware-20190828125749/";
+            string folder_name = "autoware-20190828131034/";
             for (int i = 0; i < 1200; i++)
             {
                 cout << "Frame: " << i << endl;
@@ -971,21 +1040,29 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                     cout << "--- moving objects detected---\n";
                 else
                     cout << "--- no objects detected---\n";
+                cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
                 cv::imshow("image", img);
                 cv::waitKey(1);
                 #endif
                 for (int i = 0; i < 32; i++)
                 {
-                    find_boundary_from_half_scan(i, 8);
+                    find_boundary_from_half_scan(i, 8, false);
+                    find_boundary_from_half_scan(i, 8, true);
                 }
                 std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
                 std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
                 std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
                 std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+                
+                std::vector<std::vector<cv::Vec3f>> buffers_m = getLidarBuffers(this->pointcloud, this->is_boundary_masking);
+                std::vector<cv::viz::WLine> WLine_m = this->fuser.displayLidarLine(buffers_m[1]);
+                std::vector<cv::viz::WText3D> confidences_m = this->fuser.displayConfidence(buffers_m[1]);
+                std::vector<cv::viz::WPolyLine> thirdOrder_m = this->fuser.displayThirdOrder(buffers_m[1]);
                 // leftLine = run_RANSAC(0);
                 // rightLine = run_RANSAC(1);
                 if (vis) {
                     update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
+                    update_viewer(buffers_m, WLine_m, confidences_m, temp, thirdOrder_m, viewer2);
                     // update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
                 }
             }
@@ -1000,6 +1077,7 @@ void Boundary_detection::reset()
     this->dist_to_origin = get_dist_to_origin();
     this->theoretical_dist = get_theoretical_dist();
     this->is_boundary = std::vector<bool>(this->pointcloud.size(), false);
+    this->is_boundary_masking = std::vector<bool>(this->pointcloud.size(), false);
     this->is_continuous = std::vector<bool>(this->pointcloud.size(), true);
     this->is_elevating = std::vector<bool>(this->pointcloud.size(), false);
     this->is_changing_angle = std::vector<bool>(this->pointcloud.size(), false);
@@ -1031,6 +1109,7 @@ vector<vector<float>> Boundary_detection::get_image_points()
         image_points[i][0] = (lidar_to_image[0][0] * this->pointcloud_unrotated[i][0] + lidar_to_image[0][1] * this->pointcloud_unrotated[i][1] + lidar_to_image[0][2] * this->pointcloud_unrotated[i][2] + lidar_to_image[0][3]) / scale;
         image_points[i][1] = (lidar_to_image[1][0] * this->pointcloud_unrotated[i][0] + lidar_to_image[1][1] * this->pointcloud_unrotated[i][1] + lidar_to_image[1][2] * this->pointcloud_unrotated[i][2] + lidar_to_image[1][3]) / scale;
     }
+    cout << image_points.size() << " " << this->pointcloud.size() << endl;
     return image_points;
 }
 
@@ -1063,18 +1142,22 @@ bool Boundary_detection::find_objects_from_image(string filename, cv::Mat &img)
     auto image_points = get_image_points();
     for (auto &box : bounding_boxes)
         cv::rectangle(img, cv::Point(box[1], box[0]), cv::Point(box[3], box[2]), cv::Scalar(255, 255, 255));
+    int cnt = 0;
     for (int i = 0; i < image_points.size(); i++)
     {
         if (is_in_bounding_box(image_points[i], bounding_boxes))
         {
             cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(0, 255, 0));
             this->is_objects[i] = true;
+            cnt++;
         }
         else
         {
             cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(255, 0, 0));
+            this->is_objects[i] = false;
         }
     }
+    cout << "Found " << cnt << " points from " << image_points.size() << endl;
     return true;
 }
 

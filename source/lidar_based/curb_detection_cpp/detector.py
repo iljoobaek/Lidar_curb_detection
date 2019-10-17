@@ -25,7 +25,7 @@ DEFAULT_NETWORK_INPUT_SIZE=300
 class ObjectDetector(object):
     """ A class of DNN object detector. """
     def __init__(self,
-                 network_size=None, gpu_memusage=-1):
+                 network_size=[300,960], gpu_memusage=-1):
         """
         Args:
             checkpoint_path: a string containing the path to
@@ -293,7 +293,8 @@ if __name__ == '__main__':
     label_map_path = os.path.join(dirname,
         './train_kitti_mot_lisa_bdd_distort_color_focal_loss_300k/kitti_mot_bdd100k_lisaExtended2Coco_(train).tfrecord.pbtxt')
     # detector = ObjectDetector(checkpoint_path, pipeline_config_path, label_map_path, network_size = [300, 300])
-    detector = ObjectDetector(network_size = [300, 1280])
+    # detector = ObjectDetector(network_size = [400, 1280])
+    detector = ObjectDetector(network_size = [300, 960])
     video_path=os.path.join(dirname,
         './videos/test11.avi_0000000000.avi')
     cap = cv2.VideoCapture(video_path)
