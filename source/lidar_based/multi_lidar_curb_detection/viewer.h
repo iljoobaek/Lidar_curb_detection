@@ -40,7 +40,6 @@ std::vector<std::string> get_file_names() {
 void update_viewer(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<bool>> &results, cv::viz::Viz3d &viewer) {
     // if (buffers[0].empty()) {return;}
     cv::viz::WCloudCollection collection;
-
     std::vector<cv::Vec3f> curbsBuffer;
     for (int i = 0; i < buffers.size(); i++) {
         int idx = 0;
@@ -66,6 +65,8 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std
     }
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", collection);
+    viewer.setRenderingProperty("Cloud", cv::viz::POINT_SIZE, 2.0);  // Set point size of the point cloud
+    viewer.setBackgroundColor(cv::viz::Color::mlab()); 
     viewer.spinOnce();
 }
 
