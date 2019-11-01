@@ -8,7 +8,7 @@ int main( int argc, char* argv[] ) {
         vector<bool> result = detection->run_detection(true);    
     }
     else {
-        std::unique_ptr<Boundary_detection> detection(new Boundary_detection("velodynes/", 0, 16.0, 1.125));
+        std::unique_ptr<Boundary_detection> detection(new Boundary_detection("test1/", 0, 16.0, 1.125));
         vector<bool> result = detection->run_detection(true);    
     }    
 

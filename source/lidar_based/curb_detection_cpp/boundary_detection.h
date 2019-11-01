@@ -32,7 +32,7 @@
 #define PI 3.14159265
 #define THETA_R 0.00356999
 #define MIN_CURB_HEIGHT 0.05
-#define USE_OBJECT_MASKING true
+#define USE_OBJECT_MASKING false
 
 using std::cout;
 using std::endl;
@@ -171,6 +171,7 @@ public:
     string get_filename_pointcloud(const string &root_dir, int frame_idx);
     string get_filename_image(const string &root_dir, int frame_idx);
     void print_pointcloud(const std::vector<std::vector<float>> &pointcloud);
+    void write_result_to_txt(const string &filename);
 
     void reset();    
     std::vector<std::vector<float>>& get_pointcloud();

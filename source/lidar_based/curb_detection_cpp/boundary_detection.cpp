@@ -1009,27 +1009,53 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 {
                     find_boundary_from_half_scan(i, 8, false);
                 }
-                // auto leftLine = run_RANSAC(0);
-                // auto rightLine = run_RANSAC(1);
+                auto leftLine = run_RANSAC(0);
+                auto rightLine = run_RANSAC(1);
 
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
-                this->object_detector->call_method("run", filename);
-                // if (vis) update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                // this->object_detector->call_method("run", filename);
+                if (vis) update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+            }
+        }
+        else if (this->directory == "evaluation/")
+        {
+            for (int i = 1750; i < 2201; i++)
+            {
+                high_resolution_clock::time_point t1 = high_resolution_clock::now();
+                std::stringstream ss;
+                ss << std::setfill('0') << std::setw(10) << i;
+                string filename = this->directory + ss.str() + ".bin";
+                this->pointcloud = read_bin(filename);
+                pointcloud_preprocessing();
+                for (int i = 0; i < 32; i++)
+                {
+                    find_boundary_from_half_scan(i, 8, false);
+                }
+                auto leftLine = run_RANSAC(0);
+                auto rightLine = run_RANSAC(1);
+
+                high_resolution_clock::time_point t2 = high_resolution_clock::now();
+                auto duration = duration_cast<milliseconds>(t2 - t1).count();
+                cout << duration << endl;
+
+                write_result_to_txt(filename);
+                if (vis) update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
             }
         }
         else if (this->directory == "velodynes/")
         {
             cout << "------------------------------------------------------\n";
             // string folder_name = "autoware-20190828123615/";
-            // string folder_name = "autoware-20190828125749/";
-            string folder_name = "autoware-20190828131034/";
+            string folder_name = "autoware-20190828125709/";
             for (int i = 0; i < 1200; i++)
             {
                 cout << "Frame: " << i << endl;
                 string filename_velodyne = get_filename_pointcloud(folder_name, i);
+                cout << "Readin: " << i << endl;
                 this->pointcloud = read_bin(filename_velodyne);
+                cout << "AfterReadin: " << i << endl;
                 pointcloud_preprocessing();
                 
                 #if USE_OBJECT_MASKING
@@ -1047,22 +1073,26 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 for (int i = 0; i < 32; i++)
                 {
                     find_boundary_from_half_scan(i, 8, false);
+                    #if USE_OBJECT_MASKING
                     find_boundary_from_half_scan(i, 8, true);
+                    #endif
                 }
                 std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
                 std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
                 std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
                 std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
-                
+
+                #if USE_OBJECT_MASKING
                 std::vector<std::vector<cv::Vec3f>> buffers_m = getLidarBuffers(this->pointcloud, this->is_boundary_masking);
                 std::vector<cv::viz::WLine> WLine_m = this->fuser.displayLidarLine(buffers_m[1]);
                 std::vector<cv::viz::WText3D> confidences_m = this->fuser.displayConfidence(buffers_m[1]);
                 std::vector<cv::viz::WPolyLine> thirdOrder_m = this->fuser.displayThirdOrder(buffers_m[1]);
-                // leftLine = run_RANSAC(0);
-                // rightLine = run_RANSAC(1);
+                #endif
                 if (vis) {
                     update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
+                    #if USE_OBJECT_MASKING
                     update_viewer(buffers_m, WLine_m, confidences_m, temp, thirdOrder_m, viewer2);
+                    #endif
                     // update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
                 }
             }
@@ -1191,15 +1221,57 @@ void Boundary_detection::print_pointcloud(const vector<vector<float>> &pointclou
     cout << endl;
 }
 
-std::vector<std::vector<float>>& Boundary_detection::get_pointcloud() {
+void Boundary_detection::write_result_to_txt(const string &filename)
+{
+    string result_left = "evaluation_result/" + filename.substr(filename.find('0'), 10) + "_l.txt";
+    string result_right = "evaluation_result/" + filename.substr(filename.find('0'), 10) + "_r.txt";
+
+    std::ofstream file_l, file_r;
+    file_l.open(result_left);
+    file_r.open(result_right);   
+    for (int i = 0; i < 32; i++)
+    {
+        if (i % 2 == 0) // left scan
+        {
+            for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
+            {
+                if (is_boundary[j])
+                {
+                    std::stringstream ss;
+                    ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
+                    file_l << ss.str();
+                }
+            }
+        }
+        else
+        {
+            for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
+            {
+                if (is_boundary[j])
+                {
+                    std::stringstream ss;
+                    ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
+                    file_r << ss.str();
+                }
+            }
+        }
+    }
+    file_l.close();
+    file_r.close();
+}
+
+std::vector<std::vector<float>>& Boundary_detection::get_pointcloud() 
+{
     return this->pointcloud; 
 }
 
-std::vector<bool>& Boundary_detection::get_result() {
+std::vector<bool>& Boundary_detection::get_result() 
+{
     return this->is_boundary;
 }
 
-void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned int interval) {
+void Boundary_detection::timedFunction(std::function<void(void)> func, unsigned int interval) 
+{
     std::thread([func, interval]() {
         while (true) {
             auto x = std::chrono::steady_clock::now() + std::chrono::milliseconds(interval);
