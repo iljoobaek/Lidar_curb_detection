@@ -1033,15 +1033,17 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 {
                     find_boundary_from_half_scan(i, 8, false);
                 }
-                auto leftLine = run_RANSAC(0);
-                auto rightLine = run_RANSAC(1);
+                std::vector<std::vector<cv::Vec3f>> buffers = getLidarBuffers(this->pointcloud, this->is_boundary);
+                std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
+                std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
+                std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
 
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
 
                 write_result_to_txt(filename);
-                if (vis) update_viewer_lidar(this->pointcloud, this->is_boundary, leftLine, rightLine, viewer, this->isPCAP);
+                if (vis) update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
             }
         }
         else if (this->directory == "velodynes/")
