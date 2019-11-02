@@ -10,15 +10,6 @@
 #include "VelodyneCapture.h"
 namespace fs = std::experimental::filesystem;
 
-// Define options
-
-enum class Mytype {
-    Type1,
-    Type2,
-    Type3,
-    Type4
-};
-
 namespace LidarViewer {
 std::vector<std::string> get_file_names() {
     std::vector<std::string> files(6);
@@ -108,6 +99,8 @@ void update_viewer(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std
     }
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", collection);
+    viewer.setRenderingProperty("Cloud", cv::viz::POINT_SIZE, 2.0);  // Set point size of the point cloud
+    viewer.setBackgroundColor(cv::viz::Color::mlab()); 
     viewer.spinOnce();
 }
 

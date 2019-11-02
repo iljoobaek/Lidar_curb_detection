@@ -67,11 +67,13 @@ int main( int argc, char* argv[] ) {
         for (int i = 0; i < numOfVelodynes; i++) {
             // Convert to 3-dimention Coordinates
             th[i] = std::thread(capture_and_detect_bool, std::ref(detections[i]), std::ref(buffers[i]), std::ref(results[i]), rot_params[i], std::ref(rot_vec[i]), std::ref(trans_vec[i]));
+            // th[i] = std::thread(capture_and_detect, std::ref(detections[i]), std::ref(buffers[i]), std::ref(results_int[i]), rot_params[i], std::ref(rot_vec[i]), std::ref(trans_vec[i]));
         }
         for (int i = 0; i < numOfVelodynes; i++) {
             th[i].join();
         }
         LidarViewer::update_viewer(buffers, results, viewer);
+        // LidarViewer::update_viewer(buffers, results_int, viewer);
         auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
         std::cout << "Frame " << frame_idx++ << ": takes " << t_end << " ms" << std::endl;
         for (int i = 0; i < numOfVelodynes; i++) {

@@ -117,6 +117,11 @@ typedef boost::interprocess::allocator<cv::Vec3f, boost::interprocess::managed_s
 typedef boost::interprocess::vector<cv::Vec3f, ShmemAllocator> radar_shared;
 
 class Boundary_detection {
+private:
+    enum class ScanDirection {
+        CLOCKWISE,
+        COUNTER_CLOCKWISE
+    };
 public:
     Boundary_detection(string dir, int id, float tilted_angle, float sensor_height): directory(dir), frame_id(id), num_of_scan(16) {
         #if USE_MULTIPLE_LIDAR
@@ -158,10 +163,11 @@ public:
     float get_angle(const std::vector<float> &v1, const std::vector<float> &v2);
     std::vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
     std::vector<bool> local_min_of_direction_change(int scan_id);
+    std::vector<bool> get_local_min(const std::vector<float> &vec);
     std::vector<int> elevation_filter(int scan_id);
     std::vector<int> elevation_filter_abs(int scan_id); // Updated version
-    bool is_start_point(int scan_id, int idx, const std::vector<int> &elevation, bool is_clockwise);
-    bool is_end_point(int scan_id, int idx, const std::vector<int> &elevation, bool is_clockwise);
+    bool is_start_point(int scan_id, int idx, const std::vector<int> &elevation, Boundary_detection::ScanDirection dir);
+    bool is_end_point(int scan_id, int idx, const std::vector<int> &elevation, Boundary_detection::ScanDirection dir);
     void edge_filter_from_elevation(int scan_id, const std::vector<int> &elevation, std::vector<bool> &edge_start, std::vector<bool> &edge_end);
     std::vector<bool> obstacle_extraction(int scan_id);
     std::vector<cv::Point2f> run_RANSAC(int side, int max_per_scan=10);
