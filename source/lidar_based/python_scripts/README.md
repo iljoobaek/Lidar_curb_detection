@@ -3,7 +3,7 @@
 ##
 1. Put the rosbag file at the same directory
 2. Run the python script with
-```python
+```
 python convert_rosbag.py bagfile_name --split
 ```
 
