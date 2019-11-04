@@ -15,6 +15,11 @@ class FusionController {
 public:
     FusionController() {}
 
+    enum class Boundary {
+        left,
+        right
+    };
+
     struct Line {
         float b, m, r2, lowerBound, upperBound, avgX;
 
@@ -114,8 +119,8 @@ public:
         std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
         // cv::viz::WPolyLine left = thirdOrderlsq(lines[0], confidenceLeft);
         // cv::viz::WPolyLine right = thirdOrderlsq(lines[1], confidenceRight);
-        cv::viz::WPolyLine left = thirdOrderlsq_eigen(lines[0], confidenceLeft);
-        cv::viz::WPolyLine right = thirdOrderlsq_eigen(lines[1], confidenceRight);
+        cv::viz::WPolyLine left = thirdOrderlsq_eigen(lines[0], confidenceLeft, FusionController::Boundary::left);
+        cv::viz::WPolyLine right = thirdOrderlsq_eigen(lines[1], confidenceRight, FusionController::Boundary::right);
         std::vector<cv::viz::WPolyLine> displayLines = { left, right };
         return displayLines;
     }
@@ -399,7 +404,7 @@ public:
         return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
     }
     
-    cv::viz::WPolyLine thirdOrderlsq_eigen(std::vector<cv::Vec3f>& points, float confidence)
+    cv::viz::WPolyLine thirdOrderlsq_eigen(std::vector<cv::Vec3f>& points, float confidence, FusionController::Boundary boundary)
     {
         std::vector<float> x, y;
         for (int i = 0; i < points.size(); i++) {
@@ -435,7 +440,6 @@ public:
             b(i) = y.at(i);
         }
         
-        // VectorXf solution = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
         VectorXf solution = A.colPivHouseholderQr().solve(b);
         std::cout << "The least-squares solution is:\n"
                 << solution << std::endl;
@@ -443,8 +447,14 @@ public:
         std::vector<float> coeffs;
         for (size_t i = 0; i < order+1; ++i) {
             coeffs.push_back(solution(i));
+            if (boundary == FusionController::Boundary::left) {
+                leftPolyLineCoeffs.push_back(solution[i]);
+            }
+            else {
+                rightPolyLineCoeffs.push_back(solution[i]);
+            }
         }
-        std::reverse(coeffs.begin(), coeffs.end());
+        std::reverse(coeffs.begin(), coeffs.end());  // reverse from [C3, C2, C1, C0] to [C0, C1, C2, C3]
         std::vector<cv::Vec3f> linePoints;
         for (int i = *minmaxX.first * 100; i <= *minmaxX.second * 100; i++) {
             linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i / 100. + coeffs[2] * powf(i / 100., 2) + coeffs[3] * powf(i / 100., 3), i / 100., 0));

@@ -171,7 +171,7 @@ public:
     string get_filename_pointcloud(const string &root_dir, int frame_idx);
     string get_filename_image(const string &root_dir, int frame_idx);
     void print_pointcloud(const std::vector<std::vector<float>> &pointcloud);
-    void write_result_to_txt(const string &filename);
+    void write_result_to_txt(const string &filename, const std::vector<float> &boundaryCoeffs, int leftRight);
 
     void reset();    
     std::vector<std::vector<float>>& get_pointcloud();

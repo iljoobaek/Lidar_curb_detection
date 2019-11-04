@@ -1037,12 +1037,15 @@ std::vector<bool> Boundary_detection::run_detection(bool vis) {
                 std::vector<cv::viz::WLine> WLine = this->fuser.displayLidarLine(buffers[1]);
                 std::vector<cv::viz::WText3D> confidences = this->fuser.displayConfidence(buffers[1]);
                 std::vector<cv::viz::WPolyLine> thirdOrder = this->fuser.displayThirdOrder(buffers[1]);
+                std::vector<float> leftBoundaryCoeffs = this->fuser.getLeftCoeffs();
+                std::vector<float> rightBoundaryCoeffs = this->fuser.getRightCoeffs();
 
                 high_resolution_clock::time_point t2 = high_resolution_clock::now();
                 auto duration = duration_cast<milliseconds>(t2 - t1).count();
                 cout << duration << endl;
 
-                write_result_to_txt(filename);
+                write_result_to_txt(filename, leftBoundaryCoeffs, 0);
+                write_result_to_txt(filename, rightBoundaryCoeffs, 1);
                 if (vis) update_viewer(buffers, WLine, confidences, temp, thirdOrder, viewer);
             }
         }
@@ -1223,43 +1226,38 @@ void Boundary_detection::print_pointcloud(const vector<vector<float>> &pointclou
     cout << endl;
 }
 
-void Boundary_detection::write_result_to_txt(const string &filename)
+void Boundary_detection::write_result_to_txt(const string &filename, const std::vector<float> &boundaryCoeffs, int leftRight)
 {
-    string result_left = "evaluation_result/" + filename.substr(filename.find('0'), 10) + "_l.txt";
-    string result_right = "evaluation_result/" + filename.substr(filename.find('0'), 10) + "_r.txt";
+    string fn = "evaluation_result/" + filename.substr(filename.find('0'), 10);
+    fn += (leftRight == 0) ? "_l.txt" : "_r.txt";
 
-    std::ofstream file_l, file_r;
-    file_l.open(result_left);
-    file_r.open(result_right);   
-    for (int i = 0; i < 32; i++)
-    {
-        if (i % 2 == 0) // left scan
+    std::ofstream file_out;
+    file_out.open(fn);   
+    if (boundaryCoeffs.empty()) {
+        file_out << "null\n";
+    }
+    else {
+        std::stringstream ss;
+        ss << boundaryCoeffs[0] << " " << boundaryCoeffs[1] << " " << boundaryCoeffs[2] << " "  << boundaryCoeffs[3] << "\n";
+        file_out << ss.str();
+        for (int i = 0; i < 32; i++)
         {
-            for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
+            if (i % 2 == leftRight) // left or right scan
             {
-                if (is_boundary[j])
+                for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
                 {
-                    std::stringstream ss;
-                    ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
-                    file_l << ss.str();
-                }
-            }
-        }
-        else
-        {
-            for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
-            {
-                if (is_boundary[j])
-                {
-                    std::stringstream ss;
-                    ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
-                    file_r << ss.str();
+                    if (is_boundary[j])
+                    {
+                        ss.str("");
+                        ss.clear();
+                        ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
+                        file_out << ss.str();
+                    }
                 }
             }
         }
     }
-    file_l.close();
-    file_r.close();
+    file_out.close();
 }
 
 std::vector<std::vector<float>>& Boundary_detection::get_pointcloud() 
