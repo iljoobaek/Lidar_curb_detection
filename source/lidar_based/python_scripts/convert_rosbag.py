@@ -38,7 +38,6 @@ def parseRosbag(bag):
                     except CvBridgeError as e:
                         print(e)
                     out_bag.write('/image_raw', converted_msg, t)
-            out_bag.close()
     return 
 
 def toRGB(bag):
@@ -58,8 +57,8 @@ def toRGB(bag):
         out_bag.close()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('bag_name',  type=str, help="name of the bag file")
-parser.add_argument('--split',  action='store_true', help="split the rosbag or not")
+parser.add_argument('bag_name', type=str, help="name of the bag file")
+parser.add_argument('--split', action='store_true', help="split the rosbag or not")
 args = vars(parser.parse_args())
 
 if __name__ == "__main__":
