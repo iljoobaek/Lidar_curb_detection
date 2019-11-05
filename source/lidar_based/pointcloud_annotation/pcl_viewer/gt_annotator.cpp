@@ -7,15 +7,19 @@
 #include <string>
 #include <sstream>
 #include <thread>
+#include <cmath>
 
 #include <pcl/common/common_headers.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/console/parse.h>
-
 #include <pcl/visualization/point_picking_event.h> // for 3D point picking event 
 
+#include <Eigen/Dense>
+#define PI 3.14159265
+
+using namespace Eigen;
 using namespace std::chrono_literals;
 
 std::vector<std::string> labeled;
@@ -26,13 +30,76 @@ std::string filename_left, filename_right;
 std::ofstream file;
 bool clicked(false), clear(false);
 
+void rotate_and_translate(std::vector<float> &point, float theta=16.0f, float sensor_height=1.125f)
+{
+    // rotation matrix along x
+    // [1,           0,           0]
+    // [0,  cos(theta), -sin(theta)]
+    // [0,  sin(theta),  cos(theta)]
+
+    // rotation matrix along y
+    // [cos(theta),   0, sin(theta)]
+    // [0,            1,          0]
+    // [-sin(theta),  0, cos(theta)]
+    
+    // cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
+    // cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
+    // cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
+
+    theta = theta / 180.0f * PI;
+    float x = point[0] * std::cos(theta) + point[2] * std::sin(theta);
+    float z = point[0] * (-std::sin(theta)) + point[2] * std::cos(theta) + sensor_height;
+    point[0] = x;
+    point[2] = z;
+    // Rotate along z axis to match the coordinates from pcap / velodyne capture
+    float xx = point[0] * std::cos(PI / 2) + point[1] * (-std::sin(PI / 2));
+    float yy = point[0] * std::sin(PI / 2) + point[1] * std::cos(PI / 2);
+    point[0] = xx;
+    point[1] = yy;
+}
+
+std::vector<float> getThirdOrderPolynomials() 
+{
+    std::vector<float> boundaryCoeffs;
+
+    // Calculate third order polynomials by linear least square 
+    MatrixXf A(selected_points.size(), 4);
+    VectorXf b(selected_points.size());
+    for (int i = 0; i < selected_points.size(); i++) 
+    {
+        A(i, 0) = std::pow(selected_points[i][1], 3);
+        A(i, 1) = std::pow(selected_points[i][1], 2);
+        A(i, 2) = std::pow(selected_points[i][1], 1);
+        A(i, 3) = 1.0f;
+    }
+    for (int i = 0; i < selected_points.size(); i++) 
+    {
+        b(i) = selected_points[i][0];
+    }
+    
+    // VectorXf solution = A.bdcSvd(ComputeThinU | ComputeThinV).solve(b);
+    VectorXf solution = A.colPivHouseholderQr().solve(b);
+    std::cout << "The least-squares solution is:\n" << solution << std::endl;
+    for (int i = 0; i < 4; i++)
+    {
+        boundaryCoeffs.push_back(solution(i));
+    }
+    return boundaryCoeffs;
+}
+
 void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event,
         void* viewer_void)
 {
     pcl::visualization::PCLVisualizer *viewer = static_cast<pcl::visualization::PCLVisualizer *> (viewer_void);
     if (event.getKeySym () == "l" && event.keyDown ())
     {
+        std::vector<float> boundaryCoeffs = getThirdOrderPolynomials();
+        std::stringstream ss;
+        assert(boundaryCoeffs.size() == 4);
+        ss << boundaryCoeffs[0] << " " << boundaryCoeffs[1] << " " << boundaryCoeffs[2] << " " << boundaryCoeffs[3] << "\n";    
+
         file.open(filename_left);
+        file << ss.str();
         for (auto &point : labeled) 
         {
             file << point;
@@ -42,7 +109,13 @@ void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event,
     }
     else if (event.getKeySym () == "r" && event.keyDown ())
     {
+        std::vector<float> boundaryCoeffs = getThirdOrderPolynomials();
+        std::stringstream ss;
+        assert(boundaryCoeffs.size() == 4);
+        ss << boundaryCoeffs[0] << " " << boundaryCoeffs[1] << " " << boundaryCoeffs[2] << " " << boundaryCoeffs[3] << "\n";    
+        
         file.open(filename_right);
+        file << ss.str();
         for (auto &point : labeled) 
         {
             file << point;
@@ -107,10 +180,13 @@ pcl::PointCloud<pcl::PointXYZRGB>::Ptr create_cloud_from_binary (const std::stri
     num = fread(data, sizeof(float), num, stream) / 5;
     for (int32_t i = 0; i < num; i++)
     {
+        std::vector<float> point({*px, *py, *pz});
+        rotate_and_translate(point);
+        
         pcl::PointXYZRGB rgb_point;
-        rgb_point.x = *px;
-        rgb_point.y = *py;
-        rgb_point.z = *pz;
+        rgb_point.x = point[0];
+        rgb_point.y = point[1];
+        rgb_point.z = point[2];
         uint8_t r(255), g(255), b(255);
         uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
         rgb_point.rgb = *reinterpret_cast<float*>(&rgb);
