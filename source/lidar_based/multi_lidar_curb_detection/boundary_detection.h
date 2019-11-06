@@ -37,81 +37,83 @@ using std::vector;
 using std::string;
 using namespace std::chrono;
 
-// class Object_detection {
-// public:
-//     Object_detection() {
-//         // path of the virtual env
-//         setenv("PYTHONHOME", "/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection_cpp/env/", true);
-//         Py_Initialize();
-//         if ( !Py_IsInitialized() ){
-//             std::cerr << "Initialize failed\n";
-//         }
-//         else cout << "Python interpreter initialized\n";
-//         PyRun_SimpleString("import sys");
-//         PyRun_SimpleString("sys.path.append('./')");
-//         this->pName = PyString_FromString("detector");
-// 	    this->pModule = PyImport_Import(this->pName);
-// 	    if ( !this->pModule ){
-// 	    	std::cerr << "Can't find Module\n";
-// 	    	PyErr_Print();
-// 	    }
-//         this->python_class = PyObject_GetAttrString(this->pModule, "ObjectDetector");
-//         if ( !this->python_class) std::cerr <<"can't get python class [ObjectDetector]\n";
-//         if (PyCallable_Check(python_class)) {
-//             std::cout << "Instatiate python class object\n";
-//             object = PyObject_CallObject(python_class, nullptr);
-//         }
-//         else {
-//             std::cerr <<"can't instatiate python class [ObjectDetector]\n";
-//         }
-//         cout << "------------------------------------------------------\n";
-//         this->img_width = 1280;
-//         this->img_height = 1024;
-//         this->ROI_height = 400;
-//         this->ROI_offset_y = 200;
-//     }
+#if USE_OBJECT_MASKING
+class Object_detection {
+public:
+    Object_detection() {
+        // path of the virtual env
+        setenv("PYTHONHOME", "/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection_cpp/env/", true);
+        Py_Initialize();
+        if ( !Py_IsInitialized() ){
+            std::cerr << "Initialize failed\n";
+        }
+        else cout << "Python interpreter initialized\n";
+        PyRun_SimpleString("import sys");
+        PyRun_SimpleString("sys.path.append('./')");
+        this->pName = PyString_FromString("detector");
+	    this->pModule = PyImport_Import(this->pName);
+	    if ( !this->pModule ){
+	    	std::cerr << "Can't find Module\n";
+	    	PyErr_Print();
+	    }
+        this->python_class = PyObject_GetAttrString(this->pModule, "ObjectDetector");
+        if ( !this->python_class) std::cerr <<"can't get python class [ObjectDetector]\n";
+        if (PyCallable_Check(python_class)) {
+            std::cout << "Instatiate python class object\n";
+            object = PyObject_CallObject(python_class, nullptr);
+        }
+        else {
+            std::cerr <<"can't instatiate python class [ObjectDetector]\n";
+        }
+        cout << "------------------------------------------------------\n";
+        this->img_width = 1280;
+        this->img_height = 1024;
+        this->ROI_height = 400;
+        this->ROI_offset_y = 200;
+    }
     
-//     ~Object_detection() {
-//         Py_DECREF(this->pName);
-//         Py_DECREF(this->pModule);
-//         Py_DECREF(this->python_class);
-//         Py_DECREF(this->object);
-//         Py_Finalize();
-//         cout << "Close Python interpreter\n";
-//     }
+    ~Object_detection() {
+        Py_DECREF(this->pName);
+        Py_DECREF(this->pModule);
+        Py_DECREF(this->python_class);
+        Py_DECREF(this->object);
+        Py_Finalize();
+        cout << "Close Python interpreter\n";
+    }
 
-//     PyObject* call_method(char *method, string filename) {
-//     	PyObject* res;
-//         res = PyObject_CallMethod(this->object, method, "(s)", filename.c_str());
-//         if (!res) PyErr_Print();
-//         return res;
-//     }
+    PyObject* call_method(char *method, string filename) {
+    	PyObject* res;
+        res = PyObject_CallMethod(this->object, method, "(s)", filename.c_str());
+        if (!res) PyErr_Print();
+        return res;
+    }
 
-//     vector<float> listTupleToVector(PyObject *data_in) {
-//         vector<float> data;
-//         if (PyTuple_Check(data_in)) {
-//             for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
-//                 PyObject* value = PyTuple_GetItem(data_in, i);
-//                 data.push_back( PyFloat_AsDouble(value) );
-//             }
-//         }
-//         else {
-//             if (PyList_Check(data_in)) {
-//                 for (Py_ssize_t i = 0; i < PyList_Size(data_in); i++) {
-//                     PyObject* value = PyList_GetItem(data_in, i);
-//                     data.push_back( PyFloat_AsDouble(value) );
-//                 }
-//             }           
-//             else throw std::logic_error("Passed PyObject pointer is not a list or tuple."); 
-//         }
-//         return data;
-//     }
+    vector<float> listTupleToVector(PyObject *data_in) {
+        vector<float> data;
+        if (PyTuple_Check(data_in)) {
+            for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
+                PyObject* value = PyTuple_GetItem(data_in, i);
+                data.push_back( PyFloat_AsDouble(value) );
+            }
+        }
+        else {
+            if (PyList_Check(data_in)) {
+                for (Py_ssize_t i = 0; i < PyList_Size(data_in); i++) {
+                    PyObject* value = PyList_GetItem(data_in, i);
+                    data.push_back( PyFloat_AsDouble(value) );
+                }
+            }           
+            else throw std::logic_error("Passed PyObject pointer is not a list or tuple."); 
+        }
+        return data;
+    }
 
-//     int img_width, img_height, ROI_height, ROI_offset_y;
+    int img_width, img_height, ROI_height, ROI_offset_y;
 
-// private:
-//     PyObject *pName, *pModule, *python_class, *object;
-// };
+private:
+    PyObject *pName, *pModule, *python_class, *object;
+};
+#endif
 
 typedef boost::interprocess::allocator<cv::Vec3f, boost::interprocess::managed_shared_memory::segment_manager>  ShmemAllocator;
 typedef boost::interprocess::vector<cv::Vec3f, ShmemAllocator> radar_shared;

@@ -29,11 +29,12 @@ void capture_and_detect_bool(const std::unique_ptr<Boundary_detection> &detectio
 
 int main( int argc, char* argv[] ) {
     
-    int numOfVelodynes = 6;
+    int numOfVelodynes = 1;
     std::vector<std::string> pcap_files = LidarViewer::get_file_names(); 
     
     // Create Viewer
     cv::viz::Viz3d viewer( "Velodyne" );
+    bool pause(false);
 
     // Register Keyboard Callback
     viewer.registerKeyboardCallback(
@@ -44,6 +45,15 @@ int main( int argc, char* argv[] ) {
             }
         }
         , &viewer);
+    viewer.registerKeyboardCallback(
+        []( const cv::viz::KeyboardEvent& event, void* pause ){
+        // Close Viewer
+        if( event.code == 'p' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
+            bool* p = static_cast<bool*>( pause );
+            *p = !(*p);
+            }
+        }
+        , &pause);
     
     // Get rotation and translation parameters from lidar to vehicle coordinate
     auto rot_params = LidarViewer::get_rot_params();
@@ -57,6 +67,10 @@ int main( int argc, char* argv[] ) {
 
     int frame_idx = 0;
     while (detections[0]->capture->isRun() && !viewer.wasStopped()) {
+        if (pause) {
+            viewer.spinOnce();
+            continue;
+        }
         auto t_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         std::vector<std::vector<cv::Vec3f>> buffers(numOfVelodynes); 
         std::vector<std::vector<bool>> results(numOfVelodynes); 
