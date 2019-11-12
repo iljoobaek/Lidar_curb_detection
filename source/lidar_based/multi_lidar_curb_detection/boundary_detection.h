@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include <cmath>
 #include <algorithm>
 #include <chrono>
@@ -133,8 +134,8 @@ public:
         #endif
         this->tilted_angle = tilted_angle;
         this->sensor_height = sensor_height;
-        this->angles = {-15.0, -13.0, -11.0, -9.0, -7.0, -5.0, -3.0, -1.0,
-                        1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0};
+        this->angles = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
+                        -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
         //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         if (dir.find(".pcap") != string::npos) {
             this->isPCAP = true;
@@ -157,7 +158,8 @@ public:
     void rearrange_pointcloud_sort();
     void pointcloud_preprocessing();
     void pointcloud_preprocessing(const cv::Mat &rot);
-    
+    void ground_extraction();
+
     float dist_between(const std::vector<float> &p1, const std::vector<float> &p2);
     std::vector<float> get_dist_to_origin();
     std::vector<float> get_theoretical_dist();
@@ -174,6 +176,8 @@ public:
     std::vector<bool> obstacle_extraction(int scan_id);
     std::vector<cv::Point2f> run_RANSAC(int side, int max_per_scan=10);
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
+
+    int get_index_horizontal(int idx);
 
     void find_boundary_from_half_scan(int scan_id, int k, bool masking);
     std::vector<bool> run_detection(bool vis=false);
@@ -218,6 +222,7 @@ private:
     std::vector<float> angles;
     std::vector<float> dist_to_origin;
     std::vector<float> theoretical_dist;
+    std::vector<std::vector<float>> pointcloud_raw;
     std::vector<std::vector<float>> pointcloud;
     std::vector<std::vector<float>> pointcloud_unrotated;
     std::vector<bool> is_boundary;

@@ -334,6 +334,47 @@ std::vector<float> Boundary_detection::get_theoretical_dist() {
     return dist;
 }
 
+void Boundary_detection::ground_extraction()
+{
+    std::unordered_map<float, std::vector<int>> azimuth_groups; // <azimuth, vector of index>
+    std::vector<int> order = {0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7 ,9, 11, 13, 15}; 
+    for (int i = 0; i < pointcloud.size(); i++)
+    {
+        float azimuth = pointcloud[i][6];
+        if (azimuth_groups.find(azimuth) == azimuth_groups.end()) azimuth_groups[azimuth] = std::vector<int>(16, -1); 
+        azimuth_groups[azimuth][(int)pointcloud[i][4]] = i;
+    }
+    for (auto &point : azimuth_groups)
+    {
+        float azimuth = point.first;
+        std::vector<float> dists;
+        std::vector<int> scan_ids; // scan lines ordered from -15 to 15 degree, skipped if no laser return
+        int cur = 0;
+        for (auto i : order)
+        {
+            if (point.second[i] != -1)
+            {
+                int idx = point.second[i];
+                float x = pointcloud[idx][0], y = pointcloud[idx][1];
+                dists.push_back(std::sqrt(x*x + y*y));
+                scan_ids.push_back(idx);
+            }
+        }
+        float delta = 0.0f;
+        for (int i = 1; i < dists.size(); i++)
+        {
+            if (dists[i]-dists[i-1] < delta * 0.8)
+            {
+                this->is_boundary[scan_ids[i]] = true; 
+            }
+            else {
+                                
+            }
+            delta = std::max(dists[i] - dists[i-1], delta);
+        }
+    } 
+}
+
 void Boundary_detection::pointcloud_preprocessing()
 {
     rotate_and_translate();
@@ -346,10 +387,11 @@ void Boundary_detection::pointcloud_preprocessing()
 void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
 {
     rotate_and_translate_multi_lidar_yaw(rot);
-    max_height_filter(.45);
-    rearrange_pointcloud();
-    rearrange_pointcloud_unrotated();
+    // max_height_filter(.45);
+    // rearrange_pointcloud();
+    // rearrange_pointcloud_unrotated();
     reset();
+    ground_extraction();
 }
 
 float Boundary_detection::dist_between(const std::vector<float> &p1, const std::vector<float> &p2) {
@@ -884,6 +926,11 @@ float Boundary_detection::distance_to_line(cv::Point2f p1, cv::Point2f p2)
     return std::abs(c) / std::sqrt(a * a + b * b);
 }
 
+int Boundary_detection::get_index_horizontal(int idx)
+{
+     
+}
+
 #if USE_MULTIPLE_LIDAR
 void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool masking)
 {
@@ -1139,10 +1186,10 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
 
 void Boundary_detection::detect(const cv::Mat &rot, const cv::Mat &trans, bool vis) {
     pointcloud_preprocessing(rot);
-    for (int i = 0; i < 16; i++)
-    {
-        find_boundary_from_half_scan(i, 8, false);
-    }
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     find_boundary_from_half_scan(i, 8, false);
+    // }
 }
 
 std::vector<bool> Boundary_detection::run_detection(bool vis) {

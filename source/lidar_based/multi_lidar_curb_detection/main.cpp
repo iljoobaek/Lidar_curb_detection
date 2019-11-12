@@ -28,8 +28,9 @@ void capture_and_detect_bool(const std::unique_ptr<Boundary_detection> &detectio
 }
 
 int main( int argc, char* argv[] ) {
-    
-    int numOfVelodynes = 1;
+    // Number of velodyne sensors, maximum 6 
+    int numOfVelodynes = 6;
+    std::cout << "ground2...\n";
     std::vector<std::string> pcap_files = LidarViewer::get_file_names(); 
     
     // Create Viewer
@@ -42,16 +43,16 @@ int main( int argc, char* argv[] ) {
         // Close Viewer
         if( event.code == 'q' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
             static_cast<cv::viz::Viz3d*>( cookie )->close();
-            }
+        }
         }
         , &viewer);
     viewer.registerKeyboardCallback(
         []( const cv::viz::KeyboardEvent& event, void* pause ){
-        // Close Viewer
+        // Switch state of pause / resume when pressing p
         if( event.code == 'p' && event.action == cv::viz::KeyboardEvent::Action::KEY_DOWN ){
             bool* p = static_cast<bool*>( pause );
             *p = !(*p);
-            }
+        }
         }
         , &pause);
     
@@ -65,6 +66,7 @@ int main( int argc, char* argv[] ) {
         detections.push_back(std::unique_ptr<Boundary_detection> (new Boundary_detection(file, 0, 0., 1.125)));
     }
 
+    // Main loop
     int frame_idx = 0;
     while (detections[0]->capture->isRun() && !viewer.wasStopped()) {
         if (pause) {
@@ -95,7 +97,6 @@ int main( int argc, char* argv[] ) {
         }
         std::cout << std::endl;
     }
-
     viewer.close();
     return 0;
 }

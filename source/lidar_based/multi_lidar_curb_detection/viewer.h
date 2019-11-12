@@ -181,7 +181,6 @@ void laser_to_cartesian(std::vector<velodyne::Laser> &lasers, std::vector<std::v
         float intensity = static_cast<float>(lasers[i].intensity);
         float ring = static_cast<float>(lasers[i].id);
         float dist = std::sqrt(x * x + y * y + z * z);
-        // float theta = std::atan2(y, x) * 180.0f / PI;
         float azimuth_rot = static_cast<float>(lasers[i].azimuth) + theta;
         if (azimuth_rot >= 360.0f) {
             azimuth_rot -= 360.0f;
@@ -189,7 +188,7 @@ void laser_to_cartesian(std::vector<velodyne::Laser> &lasers, std::vector<std::v
         else if (azimuth_rot < 0.0f) {
             azimuth_rot += 360.0f;
         }
-        pointcloud[idx] = {x, y, z, intensity, ring, dist, azimuth_rot}; // Write to pointcloud 
+        pointcloud[idx] = {x, y, z, intensity, ring, dist, azimuth_rot}; // Write to pointcloud
         idx++;
     }
     pointcloud.resize(idx);
