@@ -387,11 +387,14 @@ void Boundary_detection::pointcloud_preprocessing()
 void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
 {
     rotate_and_translate_multi_lidar_yaw(rot);
-    // max_height_filter(.45);
+    // max_height_filter(2.0);
     // rearrange_pointcloud();
     // rearrange_pointcloud_unrotated();
     reset();
+    auto t_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     ground_extraction();
+    auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
+    std::cout << "Takes " << t_end << " ms for ground extraction" << std::endl;
 }
 
 float Boundary_detection::dist_between(const std::vector<float> &p1, const std::vector<float> &p2) {
