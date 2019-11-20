@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <stack>
 #include <cmath>
 #include <algorithm>
 #include <chrono>
@@ -151,14 +152,14 @@ public:
     std::vector<std::vector<float>> read_bin(string filename);
     void rotate_and_translate();
     void rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot);
-    void max_height_filter(float max_height);
+    void max_height_filter(float max_height, bool is_ground_extracted=false);
     void reorder_pointcloud();
     void rearrange_pointcloud();
     void rearrange_pointcloud_unrotated();
     void rearrange_pointcloud_sort();
     void pointcloud_preprocessing();
     void pointcloud_preprocessing(const cv::Mat &rot);
-    void ground_extraction();
+    void object_extraction();
 
     float dist_between(const std::vector<float> &p1, const std::vector<float> &p2);
     std::vector<float> get_dist_to_origin();

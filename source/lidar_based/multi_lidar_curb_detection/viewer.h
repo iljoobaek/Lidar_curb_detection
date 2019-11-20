@@ -181,6 +181,7 @@ void laser_to_cartesian(std::vector<velodyne::Laser> &lasers, std::vector<std::v
         float intensity = static_cast<float>(lasers[i].intensity);
         float ring = static_cast<float>(lasers[i].id);
         float dist = std::sqrt(x * x + y * y + z * z);
+        if (dist < 0.9f) continue;
         float azimuth_rot = static_cast<float>(lasers[i].azimuth) + theta;
         if (azimuth_rot >= 360.0f) {
             azimuth_rot -= 360.0f;
@@ -198,12 +199,11 @@ void push_result_to_buffer(std::vector<cv::Vec3f> &buffer, const std::vector<std
     buffer.resize(pointcloud.size());
     for (int i = 0; i < pointcloud.size(); i++) {
         buffer[i] = cv::Vec3f( pointcloud[i][0], pointcloud[i][1], pointcloud[i][2] ); 
-        cv::Mat p(buffer[i]);
-        // p = rot * p;
-        float temp_x = p.at<float>(0,0), temp_y = p.at<float>(1,0); 
-        buffer[i][0] = temp_y + trans.at<float>(0,0);
-        buffer[i][1] = temp_x + trans.at<float>(1,0);
-        buffer[i][2] = -buffer[i][2] + trans.at<float>(2,0);
+        // cv::Mat p(buffer[i]);
+        // float temp_x = p.at<float>(0,0), temp_y = p.at<float>(1,0); 
+        // buffer[i][0] = temp_y + trans.at<float>(0,0);
+        // buffer[i][1] = temp_x + trans.at<float>(1,0);
+        // buffer[i][2] = -buffer[i][2] + trans.at<float>(2,0);
     }
 }
 }

@@ -168,7 +168,6 @@ void Boundary_detection::rotate_and_translate()
     float theta = this->tilted_angle * PI / 180.0f;
     // cout << "[ "<< std::cos(theta) << " " << 0.0f << " " << std::sin(theta) << "\n";
     // cout << 0.0f << " " << 1.0f << " " << 0.0f << "\n";
-
     // cout << -std::sin(theta) << " " << 0.0f << " " << std::cos(theta) << " ]"<< "\n";
     if (this->isPCAP)
     {
@@ -211,9 +210,10 @@ void Boundary_detection::rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot
     }
 }
 
-void Boundary_detection::max_height_filter(float max_height)
+void Boundary_detection::max_height_filter(float max_height, bool is_ground_extracted)
 {
-    if (this->isPCAP) this->pointcloud_unrotated = std::vector<std::vector<float>>(this->pointcloud.begin(), this->pointcloud.end());
+    // if (this->isPCAP) this->pointcloud_unrotated = std::vector<std::vector<float>>(this->pointcloud.begin(), this->pointcloud.end());
+    this->pointcloud_unrotated = std::vector<std::vector<float>>(this->pointcloud.begin(), this->pointcloud.end());
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++)
     { 
@@ -221,11 +221,13 @@ void Boundary_detection::max_height_filter(float max_height)
         {
             this->pointcloud[cur] = this->pointcloud[i];
             this->pointcloud_unrotated[cur] = this->pointcloud_unrotated[i];
+            if (is_ground_extracted) this->is_obstacle[cur] = this->is_obstacle[i];
             cur++;
         }
     }
     this->pointcloud.erase(this->pointcloud.begin() + cur, this->pointcloud.end());
     this->pointcloud_unrotated.erase(this->pointcloud_unrotated.begin() + cur, this->pointcloud_unrotated.end());
+    if (is_ground_extracted) this->is_obstacle.erase(this->is_obstacle.begin() + cur, this->is_obstacle.end());
 }
 #if USE_MULTIPLE_LIDAR
 void Boundary_detection::rearrange_pointcloud() 
@@ -334,8 +336,10 @@ std::vector<float> Boundary_detection::get_theoretical_dist() {
     return dist;
 }
 
-void Boundary_detection::ground_extraction()
+void Boundary_detection::object_extraction()
 {
+    this->is_obstacle = std::vector<bool>(pointcloud.size(), false);
+    this->is_boundary = std::vector<bool>(pointcloud.size(), false);
     std::unordered_map<float, std::vector<int>> azimuth_groups; // <azimuth, vector of index>
     std::vector<int> order = {0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7 ,9, 11, 13, 15}; 
     for (int i = 0; i < pointcloud.size(); i++)
@@ -346,31 +350,72 @@ void Boundary_detection::ground_extraction()
     }
     for (auto &point : azimuth_groups)
     {
-        float azimuth = point.first;
-        std::vector<float> dists;
-        std::vector<int> scan_ids; // scan lines ordered from -15 to 15 degree, skipped if no laser return
-        int cur = 0;
-        for (auto i : order)
+        if (point.second[0] == -1)
         {
-            if (point.second[i] != -1)
+            continue;
+        }
+        float azimuth = point.first;
+        float min_height = FLT_MAX;
+        std::vector<float> dists;
+        std::vector<int> scan_idx; // scan lines ordered from -15 to 15 degree, skipped if no laser return
+        std::vector<int> scan_order; // scan lines ordered from -15 to 15 degree, skipped if no laser return
+        int cur = 0;
+        for (int i = 0; i < order.size(); i++)
+        {
+            if (point.second[order[i]] != -1)
             {
-                int idx = point.second[i];
+                int idx = point.second[order[i]];
                 float x = pointcloud[idx][0], y = pointcloud[idx][1];
                 dists.push_back(std::sqrt(x*x + y*y));
-                scan_ids.push_back(idx);
+                scan_idx.push_back(idx);
+                scan_order.push_back(i);
+                min_height = std::min(min_height, pointcloud[idx][2]);
             }
         }
         float delta = 0.0f;
+        std::stack<int> obstacles;
+        bool hit_boundary = false;
         for (int i = 1; i < dists.size(); i++)
         {
-            if (dists[i]-dists[i-1] < delta * 0.8)
+            if (dists[i]-dists[i-1] < delta)
             {
-                this->is_boundary[scan_ids[i]] = true; 
+                if (scan_order[i] > 6)
+                {
+                    hit_boundary = true;
+                }
+                if (!hit_boundary)
+                {
+                    this->is_boundary[scan_idx[i]] = true;
+                    hit_boundary = true;
+                }
+                obstacles.push(scan_idx[i]); 
             }
-            else {
-                                
+            else if (!obstacles.empty()) 
+            {
+                if (pointcloud[obstacles.top()][2] > min_height + 0.6f)
+                {
+                    while (!obstacles.empty())
+                    {
+                        this->is_obstacle[obstacles.top()] = true;
+                        this->is_boundary[obstacles.top()] = false;
+                        obstacles.pop();
+                    }
+                }
+                else 
+                {
+                    obstacles = std::stack<int>();
+                }
             }
             delta = std::max(dists[i] - dists[i-1], delta);
+        }
+        if (!obstacles.empty() && pointcloud[obstacles.top()][2] > min_height + 0.6f)
+        {
+            while (!obstacles.empty())
+            {
+                this->is_obstacle[obstacles.top()] = true;
+                this->is_boundary[obstacles.top()] = false;
+                obstacles.pop();
+            }
         }
     } 
 }
@@ -387,14 +432,13 @@ void Boundary_detection::pointcloud_preprocessing()
 void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
 {
     rotate_and_translate_multi_lidar_yaw(rot);
-    // max_height_filter(2.0);
-    // rearrange_pointcloud();
+    max_height_filter(2.0, false);
+    rearrange_pointcloud();
+    object_extraction();
     // rearrange_pointcloud_unrotated();
     reset();
-    auto t_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    ground_extraction();
-    auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
-    std::cout << "Takes " << t_end << " ms for ground extraction" << std::endl;
+    // auto t_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    // auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
 }
 
 float Boundary_detection::dist_between(const std::vector<float> &p1, const std::vector<float> &p2) {
@@ -453,8 +497,12 @@ float Boundary_detection::get_angle(const vector<float> &v1, const vector<float>
 std::vector<float> Boundary_detection::direction_change_filter(int scan_id, int k, float angle_thres /* =150.0f */) {
     int n = this->ranges[scan_id][1] - this->ranges[scan_id][0];
     int st = this->ranges[scan_id][0];
-    std::vector<float> thres = {120.0f, 120.0f, 120.0f, 120.0f, 125.0f, 125.0f, 125.0f, 125.0f, 
-                                140.0f, 140.0f, 140.0f, 140.0f, 150.0f, 150.0f, 150.0f, 150.0f};
+    if (scan_id < 8 && scan_id % 2 == 0) 
+    {
+        k = 16;
+    }
+    std::vector<float> thres = {120.0f, 140.0f, 120.0f, 140.0f, 120.0f, 140.0f, 120.0f, 140.0f, 
+                                120.0f, 150.0f, 125.0f, 150.0f, 125.0f, 150.0f, 125.0f, 150.0f};
     std::vector<float> angles(n, 180.0f);
     if (n - (2 * k) < 0) return angles; 
     
@@ -469,19 +517,19 @@ std::vector<float> Boundary_detection::direction_change_filter(int scan_id, int 
         {
             int idx = (i + j >= n) ? i + j - n : i + j;
             float theta_r = (this->pointcloud[st+idx][6] < this->pointcloud[st+i][6]) ? this->pointcloud[st+idx][6]+360.0f : this->pointcloud[st+idx][6];
-            if (std::fabs( theta_r - this->pointcloud[st+i][6]) > 5.0f) continue; 
+            if (std::fabs( theta_r - this->pointcloud[st+i][6]) > 15.0f) continue; 
             direction_vecs_right[i][0] += (this->pointcloud[st + idx][0] - this->pointcloud[st + i][0]);
             direction_vecs_right[i][1] += (this->pointcloud[st + idx][1] - this->pointcloud[st + i][1]);
             direction_vecs_right[i][2] += (this->pointcloud[st + idx][2] - this->pointcloud[st + i][2]);
         }
     }
-    for (int i = n - 1; i >= k; i--)
+    for (int i = n - 1; i >= 0; i--)
     {
         for (int j = 1; j <= k; j++)
         {
             int idx = (i - j < 0) ? i - j + n : i - j;
             float theta_l = (this->pointcloud[st+idx][6] > this->pointcloud[st+i][6]) ? this->pointcloud[st+idx][6]-360.0f : this->pointcloud[st+idx][6];
-            if (std::fabs( theta_l - this->pointcloud[st+i][6]) > 5.0f) continue; 
+            if (std::fabs( theta_l - this->pointcloud[st+i][6]) > 15.0f) continue; 
             direction_vecs_left[i][0] += (this->pointcloud[st + idx][0] - this->pointcloud[st + i][0]);
             direction_vecs_left[i][1] += (this->pointcloud[st + idx][1] - this->pointcloud[st + i][1]);
             direction_vecs_left[i][2] += (this->pointcloud[st + idx][2] - this->pointcloud[st + i][2]);
@@ -490,7 +538,7 @@ std::vector<float> Boundary_detection::direction_change_filter(int scan_id, int 
     for (int i = 0; i < n; i++)
     {
         angles[i] = get_angle(direction_vecs_left[i], direction_vecs_right[i]);
-        if (angles[i] < thres[scan_id])
+        if (angles[i] < angle_thres)
         {
             this->is_changing_angle[st + i] = true;
         }
@@ -535,25 +583,30 @@ std::vector<bool> Boundary_detection::get_local_min(const std::vector<float> &ve
 
 std::vector<bool> Boundary_detection::local_min_of_direction_change(int scan_id) {
     int st = this->ranges[scan_id][0];
-    auto direction = direction_change_filter(scan_id, 8);
+    auto direction = direction_change_filter(scan_id, 5);
     int n = direction.size();
     std::vector<bool> local_min(n, false);
     std::vector<int> confidence(n, 0);
     for (int i = 0; i < n; i++)
     {
-        for (int j = -2; j <= 2; j++) {
+        for (int j = -2; j <= 2; j++) 
+        {
             int k = i + j;
-            if (k < 0) {
+            if (k < 0) 
+            {
                 k += n;
             }
-            else if (k > n-1) {
+            else if (k > n-1) 
+            {
                 k -= n;
             }
-            if (this->is_changing_angle[st + k]) {
+            if (this->is_changing_angle[st + k]) 
+            {
                 confidence[i]++;
             }
         }
-        if (confidence[i] >= 3) {
+        if (confidence[i] >= 3) 
+        {
             this->is_local_min[st+i] = true;
             local_min[i] = true;
         }
@@ -665,6 +718,10 @@ std::vector<int> Boundary_detection::elevation_filter_abs(int scan_id)
             is_elevation_changing[i] = -1;
             this->is_elevating[st + i] = -1;
         }
+        else 
+        {
+            this->is_boundary[st+i] = false;
+        }
     }
     return is_elevation_changing;
 }
@@ -720,14 +777,14 @@ bool Boundary_detection::is_start_point(int scan_id, int idx, const std::vector<
     }
     if (dir == Boundary_detection::ScanDirection::CLOCKWISE) 
     {
-        if (right_cnt >= 5 && std::abs(left_cnt) < 2) 
+        if (right_cnt >= 4 && std::abs(left_cnt) < 2) 
         {
             return true;
         }
     }
     else 
     {
-        if (left_cnt <= -5 && std::abs(right_cnt) < 2) 
+        if (left_cnt <= -4 && std::abs(right_cnt) < 2) 
         {
             return true;
         }
@@ -751,14 +808,14 @@ bool Boundary_detection::is_end_point(int scan_id, int idx, const std::vector<in
     }
     if (dir == Boundary_detection::ScanDirection::CLOCKWISE) 
     {
-        if (left_cnt >= 5 && std::abs(right_cnt) < 2) 
+        if (left_cnt >= 4 && std::abs(right_cnt) < 2) 
         {
             return true;
         }
     }
     else 
     {
-        if (right_cnt <= -5 && std::abs(left_cnt) < 2) 
+        if (right_cnt <= -4 && std::abs(left_cnt) < 2) 
         {
             return true;
         }
@@ -956,7 +1013,7 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
         if (is_end_point(scan_id, i, is_elevating, Boundary_detection::ScanDirection::CLOCKWISE)) 
         {
             edge_end_CW[i] = true;
-            this->is_edge_start[st+i] = true;
+            this->is_edge_end[st+i] = true;
         }
         if (is_start_point(scan_id, i, is_elevating, Boundary_detection::ScanDirection::CLOCKWISE)) 
         {
@@ -966,7 +1023,7 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
         if (is_end_point(scan_id, i, is_elevating, Boundary_detection::ScanDirection::COUNTER_CLOCKWISE)) 
         {
             edge_end_CCW[i] = true;
-            this->is_edge_start[st+i] = true;
+            this->is_edge_end[st+i] = true;
         }
         if (is_start_point(scan_id, i, is_elevating, Boundary_detection::ScanDirection::COUNTER_CLOCKWISE)) 
         {
@@ -974,7 +1031,7 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
             this->is_edge_start[st+i] = true;
         }
     }
-
+        
     // local min of direction change
     auto is_direction_change = local_min_of_direction_change(scan_id);
     
@@ -988,29 +1045,41 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     float missed_rate, missed = 0.0f;
     while (i < n)
     {
-        if (edge_start_CW[i])
+        if (is_changing_angle[st+i] && edge_start_CW[i] && !is_obstacle[st+i])
         {
-            cur_start = i;
-            missed = 0.0f;
-            while (i + 1 < n)
-            {
-                cur_end = i;
-                if (is_elevating[i] < 1.0f)
-                    missed += 1.0f;
-                missed_rate = missed / (cur_end - cur_start + 1);
-                cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
-                if (missed > 10 && missed_rate > 0.5) break;
-                if (cur_height < 0.0f) break;
-                if (cur_height > 0.05 && edge_end_CW[i])
-                {
-                    for (int j = cur_start; j <= cur_end; j++)
-                    {
-                        this->is_boundary[st + j] = true;
-                        if (j - cur_start > 2) break;
-                    }
-                }
-                i++;
-            }
+            this->is_boundary[st+i] = true;
+            // cur_start = i;
+            // missed = 0.0f;
+            // while (i + 1 < n)
+            // {
+            //     cur_end = i;
+            //     if (is_elevating[i] < 1.0f)
+            //         missed += 1.0f;
+            //     missed_rate = missed / (cur_end - cur_start + 1);
+            //     cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
+            //     if (missed > 10 && missed_rate > 0.5) break;
+            //     if (is_obstacle[st+i]) break;
+            //     if (cur_height < 0.0f) break;
+            //     if (cur_height > 0.05 && edge_end_CW[i])
+            //     {
+            //         for (int j = cur_start; j <= cur_end; j++)
+            //         {
+            //             this->is_boundary[st + j] = true;
+            //             if (j - cur_start > 2) break;
+            //         }
+            //         break;
+            //     }
+            //     if (cur_height > 0.1)
+            //     {
+            //         for (int j = cur_start; j <= cur_end; j++)
+            //         {
+            //             this->is_boundary[st + j] = true;
+            //             if (j - cur_start > 2) break;
+            //         }
+            //         break;
+            //     }
+            //     i++;
+            // }
         }
         i++;
     }
@@ -1020,36 +1089,41 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     missed_rate, missed = 0.0f;
     while (i >= 0)
     {
-        if (edge_start_CCW[i])
+        if (is_changing_angle[st+i] && edge_start_CCW[i] && !is_obstacle[st+i])
         {
-            cur_start = i;
-            missed = 0.0f;
-            while (i - 1 >= 0)
-            {
-                cur_end = i;
-                if (is_elevating[i] > -1.0f)
-                    missed += 1.0f;
-                missed_rate = missed / (cur_start - cur_end + 1);
-                cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
-                if (missed > 10 && missed_rate > 0.5) break;
-                if (cur_height < 0.0f) break;
-                if (cur_height > 0.05 && edge_end_CCW[i])
-                {
-                    for (int j = cur_start; j >= cur_end; j--)
-                    {
-                        this->is_boundary[st + j] = true;
-                        if (j - cur_start < -2) break;
-                    }
-                }
-                // if (cur_height > 0.1)
-                // {
-                //     for (int j = cur_end; j <= cur_start; j++)
-                //     {
-                //         this->is_boundary[st + j] = true;
-                //     }
-                // }
-                i--;
-            }
+            this->is_boundary[st+i] = true;
+            // cur_start = i;
+            // missed = 0.0f;
+            // while (i - 1 >= 0)
+            // {
+            //     cur_end = i;
+            //     if (is_elevating[i] > -1.0f)
+            //         missed += 1.0f;
+            //     missed_rate = missed / (cur_start - cur_end + 1);
+            //     cur_height = this->pointcloud[st + cur_end][2] - this->pointcloud[st + cur_start][2];
+            //     if (missed > 10 && missed_rate > 0.5) break;
+            //     if (cur_height < 0.0f) break;
+            //     if (is_obstacle[st+i]) break;
+            //     if (cur_height > 0.05 && edge_end_CCW[i])
+            //     {
+            //         for (int j = cur_start; j >= cur_end; j--)
+            //         {
+            //             this->is_boundary[st + j] = true;
+            //             if (j - cur_start < -2) break;
+            //         }
+            //         break;
+            //     }
+            //     if (cur_height > 0.1)
+            //     {
+            //         for (int j = cur_start; j >= cur_end; j--)
+            //         {
+            //             this->is_boundary[st + j] = true;
+            //             if (j - cur_start < -2) break;
+            //         }
+            //         break;
+            //     }
+            //     i--;
+            // }
         }
         i--;
     }
@@ -1189,10 +1263,11 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
 
 void Boundary_detection::detect(const cv::Mat &rot, const cv::Mat &trans, bool vis) {
     pointcloud_preprocessing(rot);
-    // for (int i = 0; i < 16; i++)
-    // {
-    //     find_boundary_from_half_scan(i, 8, false);
-    // }
+    for (int i = 0; i < 16; i++)
+    {
+        // auto is_elevating = elevation_filter_abs(i);
+        find_boundary_from_half_scan(i, 8, false);
+    }
 }
 
 std::vector<bool> Boundary_detection::run_detection(bool vis) {
@@ -1296,7 +1371,7 @@ void Boundary_detection::reset()
 {
     this->dist_to_origin = get_dist_to_origin();
     this->theoretical_dist = get_theoretical_dist();
-    this->is_boundary = std::vector<bool>(this->pointcloud.size(), false);
+    // this->is_boundary = std::vector<bool>(this->pointcloud.size(), false);
     this->is_boundary_masking = std::vector<bool>(this->pointcloud.size(), false);
     this->is_continuous = std::vector<bool>(this->pointcloud.size(), true);
     this->is_elevating = std::vector<int>(this->pointcloud.size(), false);
@@ -1304,7 +1379,6 @@ void Boundary_detection::reset()
     this->is_local_min = std::vector<bool>(this->pointcloud.size(), false);
     this->is_edge_start = std::vector<bool>(this->pointcloud.size(), false);
     this->is_edge_end = std::vector<bool>(this->pointcloud.size(), false);
-    this->is_obstacle = std::vector<bool>(this->pointcloud.size(), false);
     this->is_objects = std::vector<bool>(this->pointcloud.size(), false);
 }
 

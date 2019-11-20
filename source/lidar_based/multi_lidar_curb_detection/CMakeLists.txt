@@ -16,11 +16,11 @@ include_directories(include)
 include_directories(/opt/ros/kinetic/include)
 link_directories(/opt/ros/kinetic/lib)
 
-# add_executable( ${EXECUTABLE} boundary_detection.cpp Fusion.cpp viewer.h VelodyneCapture.h main.cpp )
 add_executable( ${EXECUTABLE} boundary_detection.cpp Fusion.cpp viewer.h VelodyneCapture.h main.cpp )
 
+# *** Find the rosbag.so
 find_package(rosbag REQUIRED)
-target_link_libraries( ${EXECUTABLE} ${rosbag_LIBRARIES} )
+target_link_libraries( ${EXECUTABLE} ${rosbag_LIBRARIES} ) 
 
 # Find Package Eigen3
 find_package( Eigen3 3.3 REQUIRED NO_MODULE )

@@ -71,7 +71,8 @@ void write_to_rosbag(rosbag::Bag &bag, const std::vector<std::vector<cv::Vec3f>>
 
 int main( int argc, char* argv[] ) {
     // Number of velodyne sensors, maximum 6 
-    int numOfVelodynes = 6;
+    int numOfVelodynes = 1;
+    int lidar_idx = 5;
     std::vector<std::string> pcap_files = LidarViewer::get_file_names(); 
     
     // Create Viewer
@@ -107,13 +108,14 @@ int main( int argc, char* argv[] ) {
         detections.push_back(std::unique_ptr<Boundary_detection> (new Boundary_detection(file, 0, 0., 1.125)));
     }
 
-    // // Rosbag option
-    // ros::Time::init();
-    // rosbag::Bag bag_out("six_lidars.bag", rosbag::bagmode::Write);
+    // Rosbag option
+    ros::Time::init();
+    rosbag::Bag bag_out("six_lidars(front).bag", rosbag::bagmode::Write);
 
     // Main loop
     int frame_idx = 0;
     while (detections[0]->capture->isRun() && !viewer.wasStopped()) {
+    // while (detections[lidar_idx]->capture->isRun() && !viewer.wasStopped()) {
         if (pause) {
             viewer.spinOnce();
             continue;
@@ -127,15 +129,18 @@ int main( int argc, char* argv[] ) {
         // Read in one frame and run detection
         std::thread th[numOfVelodynes];
         for (int i = 0; i < numOfVelodynes; i++) {
+        // for (int i = lidar_idx; i < lidar_idx+1; i++) {
             // Convert to 3-dimention Coordinates
             th[i] = std::thread(capture_and_detect_bool, std::ref(detections[i]), std::ref(buffers[i]), std::ref(results[i]), rot_params[i], std::ref(rot_vec[i]), std::ref(trans_vec[i]));
             // th[i] = std::thread(capture_and_detect, std::ref(detections[i]), std::ref(buffers[i]), std::ref(results_int[i]), rot_params[i], std::ref(rot_vec[i]), std::ref(trans_vec[i]));
         }
         for (int i = 0; i < numOfVelodynes; i++) {
+        // for (int i = lidar_idx; i < lidar_idx+1; i++) {
             th[i].join();
         }
         LidarViewer::update_viewer(buffers, results, viewer);
-        // write_to_rosbag(bag_out, buffers);
+        // LidarViewer::update_viewer(buffers, results_int, viewer);
+        write_to_rosbag(bag_out, buffers);
         auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
         std::cout << "Frame " << frame_idx++ << ": takes " << t_end << " ms" << std::endl;
         for (int i = 0; i < numOfVelodynes; i++) {
@@ -143,7 +148,7 @@ int main( int argc, char* argv[] ) {
         }
         std::cout << std::endl;
     }
-    // bag_out.close();
+    bag_out.close();
     viewer.close();
     return 0;
 }
