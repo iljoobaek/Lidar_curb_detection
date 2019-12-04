@@ -1,4 +1,5 @@
 #include <vector>
+#include <string>
 #include <opencv2/opencv.hpp>
 
 namespace SensorConfig
@@ -21,10 +22,19 @@ std::vector<std::string> getPcapFiles()
     return files;
 }
 
+std::string getBinaryFile(int frame_idx, std::string root_dir="autoware-20190828124709/")
+{
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(10) << frame_idx;
+    std::string filename = "/home/rtml/LiDAR_camera_calibration_work/data/data_raw/synced/" + root_dir + "velodyne_points/data/" + ss.str() + ".bin";
+    return filename;
+}
+
 std::vector<float> getRotationParams() 
 {
     std::vector<float> rot_params;
-    rot_params.push_back(-14.0f);  // center front
+    // rot_params.push_back(-14.0f);  // center front
+    rot_params.push_back(-90.0f);  // center front
     rot_params.push_back(-119.0f);  // center rear
     rot_params.push_back(-44.0f);  // driver front (left front)
     rot_params.push_back(-125.0f); // driver side (left side)

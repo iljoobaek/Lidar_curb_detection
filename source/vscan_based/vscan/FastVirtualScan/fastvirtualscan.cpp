@@ -1,6 +1,7 @@
 #include "fastvirtualscan/fastvirtualscan.h"
 
 #define MAXVIRTUALSCAN 1e6
+#define USEOMP
 
 FastVirtualScan::FastVirtualScan()
 {
@@ -29,7 +30,7 @@ bool compareDistance(const SimpleVirtualScan & svs1, const SimpleVirtualScan & s
     }
 }
 
-void FastVirtualScan::calculateVirtualScans(int beamNum, double heightStep, double minFloor, double maxCeiling, double obstacleMinHeight, double maxBackDistance, double beamRotation, double minRange)
+void FastVirtualScan::calculateVirtualScans(const std::vector<cv::Vec3f> &pointcloud, int beamNum, double heightStep, double minFloor, double maxCeiling, double obstacleMinHeight, double maxBackDistance, double beamRotation, double minRange)
 {
 
     assert(minFloor<maxCeiling);
@@ -67,13 +68,15 @@ void FastVirtualScan::calculateVirtualScans(int beamNum, double heightStep, doub
     }
     //set SVS
     {
-        char * tmpdata=(char *)(velodyne->data.data());
-        int i,n=velodyne->height*velodyne->width;
+        // char * tmpdata=(char *)(velodyne->data.data());
+        // int i,n=velodyne->height*velodyne->width;
+        int i,n=pointcloud.size();
 
         //O(P)
         for(i=0;i<n;i++)
         {
-            float * point=(float *)(tmpdata+i*velodyne->point_step);
+            // float * point=(float *)(tmpdata+i*velodyne->point_step);
+            const cv::Vec3f &point = pointcloud[i];
             double length=sqrt(point[0]*point[0]+point[1]*point[1]);
             double rotlength=length*c-point[2]*s;
             double rotheight=length*s+point[2]*c;

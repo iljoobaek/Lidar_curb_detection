@@ -292,11 +292,11 @@ public:
             std::vector<cv::Vec3f> zero;
             zero.push_back(cv::Vec3f(0, 0, 0));
             cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
-            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
         }
         if (x.size() == 0) {
             cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
-            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
         }
         auto minmaxX = std::minmax_element(x.begin(), x.end());
         float xRange = *minmaxX.second - *minmaxX.first;
@@ -383,10 +383,14 @@ public:
             std::vector<cv::Vec3f> zero;
             zero.push_back(cv::Vec3f(0, 0, 0));
             cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
-            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+            cv::viz::WPolyLine wline(pointsMat, cv::viz::Color::blue());
+            wline.setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
+            return wline;
         }
         cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
-        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        cv::viz::WPolyLine wline(pointsMat, cv::viz::Color::blue());
+        wline.setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
+        return wline;
     }
 
     Line linearlsq(std::vector<cv::Vec3f>& points)

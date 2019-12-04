@@ -20,8 +20,11 @@
 #include <boost/interprocess/sync/scoped_lock.hpp>
 #include <boost/interprocess/sync/named_mutex.hpp>
 
+#ifndef CV2_H
+#define CV2_H
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
+#endif
 
 #include "VelodyneCapture.h"
 
@@ -29,6 +32,7 @@
 
 #define PI 3.14159265
 #define THETA_R 0.00356999
+#define MIN_CURB_HEIGHT 0.05
 
 using namespace std::chrono;
 
@@ -44,21 +48,15 @@ private:
         COUNTER_CLOCKWISE
     };
 public:
-    Boundary_detection(std::string dir, float tilted_angle, float sensor_height): 
-                        directory(dir), num_of_scan(16), 
+    Boundary_detection(float tilted_angle, float sensor_height): 
+                        num_of_scan(16), 
                         tilted_angle(tilted_angle), sensor_height(sensor_height) 
     {
-        ranges = std::vector<std::vector<int>>(16, std::vector<int>(2));
+        // ranges = std::vector<std::vector<int>>(16, std::vector<int>(2));
+        ranges = std::vector<std::vector<int>>(32, std::vector<int>(2));
         angles = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
         //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
-        if (dir.find(".pcap") != std::string::npos) {
-            isPCAP = true;
-            capture = std::unique_ptr<velodyne::VLP16Capture> (new velodyne::VLP16Capture(dir));
-        }
-        else {
-            isPCAP = false;
-        }
         fuser = fusion::FusionController();
     } 
     
@@ -67,6 +65,17 @@ public:
     void rearrange_pointcloud();
     void pointcloud_preprocessing(const cv::Mat &rot);
 
+    std::vector<float> get_dist_to_origin();
+    float dist_between(const std::vector<float> &p1, const std::vector<float> &p2);
+    std::vector<bool> continuous_filter(int scan_id);
+    float get_angle(const std::vector<float> &v1, const std::vector<float> &v2);
+    std::vector<float> direction_change_filter(int scan_id, int k, float angle_thres=150.0f);
+    std::vector<bool> local_min_of_direction_change(int scan_id);
+    std::vector<int> elevation_filter(int scan_id);
+    void edge_filter_from_elevation(int scan_id, const std::vector<int> &elevation, std::vector<bool> &edge_start, std::vector<bool> &edge_end);
+    float distance_to_line(cv::Point2f p1, cv::Point2f p2);
+
+    void find_boundary_from_half_scan(int scan_id, int k, bool masking);
     void detect(const cv::Mat &rot, const cv::Mat &trans, bool vis=false);
 
     void reset();    
@@ -87,18 +96,30 @@ public:
     std::unique_ptr<velodyne::VLP16Capture> capture;
 
 private:
-    bool isPCAP;
     bool firstRun = true;
     bool secondRun = false;
     fusion::FusionController fuser;
-    std::string directory;
+    
     int num_of_scan;
     float tilted_angle;
     float sensor_height;
     std::vector<float> angles;
+    
     std::vector<std::vector<float>> pointcloud;
-    std::vector<bool> is_boundary;
-    std::vector<int> is_boundary_int;
     std::vector<std::vector<int>> ranges;
     std::vector<cv::Vec3f> radar_pointcloud;
+    std::vector<float> dist_to_origin;
+
+    std::vector<bool> is_boundary;
+    std::vector<int> is_boundary_int;
+
+    std::vector<bool> is_continuous;
+    std::vector<bool> is_elevating;
+    std::vector<bool> is_changing_angle;
+    std::vector<bool> is_local_min;
+    std::vector<bool> is_edge_start;
+    std::vector<bool> is_edge_end;
+
+    std::vector<bool> is_boundary_masking;
+    std::vector<bool> is_objects;
 };
