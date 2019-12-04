@@ -19,6 +19,21 @@ std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
     return out;
 }
 
+bool Boundary_detection::isRun()
+{
+    return dataReader.isRun();
+}
+
+void Boundary_detection::retrieveData()
+{
+    dataReader >> pointcloud; 
+}
+
+std::vector<cv::viz::WPolyLine> Boundary_detection::getThirdOrderLines(std::vector<cv::Vec3f> &buf)
+{
+    return fuser.displayThirdOrder(buf);
+}
+
 void Boundary_detection::rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot)
 {
     if (this->pointcloud.empty()) return;
@@ -493,16 +508,13 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     }
 }
 
-void Boundary_detection::detect(const cv::Mat &rot, const cv::Mat &trans, bool vis) 
+void Boundary_detection::detect(const cv::Mat &rot, const cv::Mat &trans) 
 {
-    pointcloud_preprocessing(rot);
-    is_boundary = std::vector<bool>(pointcloud.size(), false);
-
     for (int i = 0; i < 32; i++)
     {
         find_boundary_from_half_scan(i, 8, false);
     }
-
+    // If radar data available, read the data from shared memory
 
 }
 
@@ -525,12 +537,12 @@ std::vector<std::vector<float>>& Boundary_detection::get_pointcloud()
     return pointcloud; 
 }
 
-std::vector<int>& Boundary_detection::get_result() 
+std::vector<int> Boundary_detection::get_result() 
 {
     return is_boundary_int;
 }
 
-std::vector<bool>& Boundary_detection::get_result_bool() 
+std::vector<bool> Boundary_detection::get_result_bool() 
 {
     return is_boundary;
 }

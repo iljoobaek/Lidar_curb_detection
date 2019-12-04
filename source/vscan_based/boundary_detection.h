@@ -26,8 +26,7 @@
 #include <opencv2/viz.hpp>
 #endif
 
-#include "VelodyneCapture.h"
-
+#include "data_reader.h"
 #include "Fusion.cpp"
 
 #define PI 3.14159265
@@ -48,22 +47,41 @@ private:
         COUNTER_CLOCKWISE
     };
 public:
-    Boundary_detection(float tilted_angle, float sensor_height): 
-                        num_of_scan(16), 
+    Boundary_detection(float tilted_angle, float sensor_height, std::string data_path, int start, int end): 
+                        num_of_scan(16), dataReader(data_path, start, end), 
                         tilted_angle(tilted_angle), sensor_height(sensor_height) 
     {
-        // ranges = std::vector<std::vector<int>>(16, std::vector<int>(2));
         ranges = std::vector<std::vector<int>>(32, std::vector<int>(2));
         angles = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
         //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         fuser = fusion::FusionController();
     } 
-    
+    Boundary_detection(float tilted_angle, float sensor_height, std::string data_path): 
+                        num_of_scan(16), dataReader(data_path), 
+                        tilted_angle(tilted_angle), sensor_height(sensor_height) 
+    {
+        ranges = std::vector<std::vector<int>>(32, std::vector<int>(2));
+        angles = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
+                        -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
+        //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
+        fuser = fusion::FusionController();
+    }
+
+    bool isRun();
+    void retrieveData();
+    void pointcloud_preprocessing(const cv::Mat &rot);
+    void detect(const cv::Mat &rot, const cv::Mat &trans);
+    std::vector<std::vector<float>>& get_pointcloud();
+    std::vector<int> get_result();
+    std::vector<bool> get_result_bool();
+    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result);
+    std::vector<cv::viz::WPolyLine> getThirdOrderLines(std::vector<cv::Vec3f> &buf); 
+
+private:
     void rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot);
     void max_height_filter(float max_height);
     void rearrange_pointcloud();
-    void pointcloud_preprocessing(const cv::Mat &rot);
 
     std::vector<float> get_dist_to_origin();
     float dist_between(const std::vector<float> &p1, const std::vector<float> &p2);
@@ -76,14 +94,9 @@ public:
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
 
     void find_boundary_from_half_scan(int scan_id, int k, bool masking);
-    void detect(const cv::Mat &rot, const cv::Mat &trans, bool vis=false);
 
     void reset();    
-    std::vector<std::vector<float>>& get_pointcloud();
-    std::vector<int>& get_result();
-    std::vector<bool>& get_result_bool();
 
-    std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result);
     void timedFunction(std::function<void(void)> func, unsigned int interval);
     void expose();
     
@@ -93,13 +106,13 @@ public:
                 "radar_mutex"
             };
     
-    std::unique_ptr<velodyne::VLP16Capture> capture;
-
 private:
     bool firstRun = true;
     bool secondRun = false;
     fusion::FusionController fuser;
-    
+
+    DataReader::LidarDataReader dataReader;
+
     int num_of_scan;
     float tilted_angle;
     float sensor_height;

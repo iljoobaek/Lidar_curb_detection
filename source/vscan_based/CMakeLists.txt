@@ -19,7 +19,7 @@ link_directories(/opt/ros/kinetic/lib)
 # Include vscan directory
 include_directories(vscan/include)
 
-set (SOURCES vscan/FastVirtualScan/fastvirtualscan.cpp boundary_detection.cpp Fusion.cpp sensor_config.h viewer.h VelodyneCapture.h main.cpp )
+set (SOURCES vscan/FastVirtualScan/fastvirtualscan.cpp boundary_detection.cpp Fusion.cpp data_reader.h sensor_config.h viewer.h VelodyneCapture.h main.cpp )
 add_executable( ${EXECUTABLE} ${SOURCES} )
 
 # *** Find the rosbag.so

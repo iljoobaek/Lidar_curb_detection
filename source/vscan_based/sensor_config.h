@@ -43,24 +43,29 @@ std::vector<float> getRotationParams()
     return rot_params;
 }
 
+cv::Mat getRotationMatrixFromTheta(float theta_deg)
+{
+    cv::Mat rot = cv::Mat::zeros(3, 3, CV_32FC1);
+    float theta_rad = -theta_deg * CV_PI / 180.;  // Notice the sign of theta!
+    rot.at<float>(0,0) = std::cos(theta_rad); 
+    rot.at<float>(1,0) = std::sin(theta_rad); 
+    rot.at<float>(2,0) = 0.0f;
+    rot.at<float>(0,1) = -std::sin(theta_rad); 
+    rot.at<float>(1,1) = std::cos(theta_rad); 
+    rot.at<float>(2,2) = 0.0f;
+    rot.at<float>(0,2) = 0.0f; 
+    rot.at<float>(1,2) = 0.0f; 
+    rot.at<float>(2,2) = 1.0f;
+    return rot;
+}
+
 std::vector<cv::Mat> getRotationMatrices(const std::vector<float> &rot_params) 
 {
     // rotation matrix along z axis 
     std::vector<cv::Mat> rotation_matrices;
     for (int i = 0; i < rot_params.size(); i++) 
     {
-        cv::Mat rot = cv::Mat::zeros(3, 3, CV_32FC1);
-        float theta = -rot_params[i] * CV_PI / 180.;  // Notice the sign of theta!
-        rot.at<float>(0,0) = std::cos(theta); 
-        rot.at<float>(1,0) = std::sin(theta); 
-        rot.at<float>(2,0) = 0.0f;
-        rot.at<float>(0,1) = -std::sin(theta); 
-        rot.at<float>(1,1) = std::cos(theta); 
-        rot.at<float>(2,2) = 0.0f;
-        rot.at<float>(0,2) = 0.0f; 
-        rot.at<float>(1,2) = 0.0f; 
-        rot.at<float>(2,2) = 1.0f;
-        rotation_matrices.push_back(rot); 
+        rotation_matrices.push_back(getRotationMatrixFromTheta(rot_params[i])); 
     }
     return rotation_matrices;
 }

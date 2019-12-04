@@ -62,42 +62,42 @@ std::vector<cv::Vec3f> vectorToVec3f(const std::vector<std::vector<float>> &vec)
     return res;
 }
 
-void capture_and_detect(const std::unique_ptr<Boundary_detection> &detection, std::vector<cv::Vec3f> &buffer, std::vector<int> &result, float theta, cv::Mat &rot, cv::Mat &trans) 
-{ 
-    std::vector<velodyne::Laser> laser;
-    // Capture one frame
-    *(detection->capture) >> laser;
-    // Convert pointcloud to cartesian and copy to detection object 
-    DataSource::laser_to_cartesian(laser, detection->get_pointcloud(), theta, rot, trans);
-    // Run detection
-    detection->detect(rot, trans, false);
-    // Push result to buffer 
-    LidarViewer::push_result_to_buffer(buffer, detection->get_pointcloud(), rot, trans);
-    std::copy(detection->get_result().begin(), detection->get_result().end(), std::back_inserter(result));
-}
+// void capture_and_detect(const std::unique_ptr<Boundary_detection> &detection, std::vector<cv::Vec3f> &buffer, std::vector<int> &result, float theta, cv::Mat &rot, cv::Mat &trans) 
+// { 
+//     std::vector<velodyne::Laser> laser;
+//     // Capture one frame
+//     *(detection->capture) >> laser;
+//     // Convert pointcloud to cartesian and copy to detection object 
+//     DataSource::laser_to_cartesian(laser, detection->get_pointcloud(), theta, rot, trans);
+//     // Run detection
+//     detection->detect(rot, trans, false);
+//     // Push result to buffer 
+//     LidarViewer::push_result_to_buffer(buffer, detection->get_pointcloud(), rot, trans);
+//     std::copy(detection->get_result().begin(), detection->get_result().end(), std::back_inserter(result));
+// }
 
-void capture_and_detect_bool(const std::unique_ptr<Boundary_detection> &detection, std::vector<cv::Vec3f> &buffer, std::vector<bool> &result, float theta, cv::Mat &rot, cv::Mat &trans) 
-{ 
-    std::vector<velodyne::Laser> laser;
-    // Capture one frame
-    *(detection->capture) >> laser;
-    // Convert pointcloud to cartesian and copy to detection object 
-    DataSource::laser_to_cartesian(laser, detection->get_pointcloud(), theta, rot, trans);
-    // Run detection
-    detection->detect(rot, trans, false);
-    // Push result to buffer 
-    LidarViewer::push_result_to_buffer(buffer, detection->get_pointcloud(), rot, trans);
-    std::copy(detection->get_result_bool().begin(), detection->get_result_bool().end(), std::back_inserter(result));
-}
+// void capture_and_detect_bool(const std::unique_ptr<Boundary_detection> &detection, std::vector<cv::Vec3f> &buffer, std::vector<bool> &result, float theta, cv::Mat &rot, cv::Mat &trans) 
+// { 
+//     std::vector<velodyne::Laser> laser;
+//     // Capture one frame
+//     *(detection->capture) >> laser;
+//     // Convert pointcloud to cartesian and copy to detection object 
+//     DataSource::laser_to_cartesian(laser, detection->get_pointcloud(), theta, rot, trans);
+//     // Run detection
+//     detection->detect(rot, trans, false);
+//     // Push result to buffer 
+//     LidarViewer::push_result_to_buffer(buffer, detection->get_pointcloud(), rot, trans);
+//     std::copy(detection->get_result_bool().begin(), detection->get_result_bool().end(), std::back_inserter(result));
+// }
 
-void captureFromBinaryFiles(int frame_idx, std::vector<cv::Vec3f> &buffer, std::vector<bool> &result, float theta, float sensor_height) 
-{ 
-    std::string fn = SensorConfig::getBinaryFile(frame_idx);
-    std::vector<std::vector<float>> pointcloud = DataSource::readFromBinary(fn);
-    DataSource::rotateAndTranslate(pointcloud, theta, sensor_height);
-    LidarViewer::pushToBuffer(buffer, pointcloud);
-    result = std::vector<bool>(pointcloud.size(), false);
-}
+// void captureFromBinaryFiles(int frame_idx, std::vector<cv::Vec3f> &buffer, std::vector<bool> &result, float theta, float sensor_height) 
+// { 
+//     std::string fn = SensorConfig::getBinaryFile(frame_idx);
+//     std::vector<std::vector<float>> pointcloud = DataSource::readFromBinary(fn);
+//     DataSource::rotateAndTranslate(pointcloud, theta, sensor_height);
+//     LidarViewer::pushToBuffer(buffer, pointcloud);
+//     result = std::vector<bool>(pointcloud.size(), false);
+// }
 
 int main(int argc, char* argv[]) 
 {
@@ -122,13 +122,12 @@ int main(int argc, char* argv[])
     }
     numOfVelodynes = 1;
 
+    // Signal Handler for pause/resume viewer
     std::signal(SIGINT, signalHandler);
     double total_ms = 0.0;
 
-    DataReader::LidarDataReader reader("20191126163620/", 0, 1324);
-
-    // Get pcap file names
-    std::vector<std::string> pcap_files = SensorConfig::getPcapFiles(); 
+    // // Get pcap file names
+    // std::vector<std::string> pcap_files = SensorConfig::getPcapFiles(); 
     
     // Create Viz3d Viewer and register callbacks
     cv::viz::Viz3d viewer( "Velodyne" );
@@ -140,11 +139,8 @@ int main(int argc, char* argv[])
     auto rot_vec = SensorConfig::getRotationMatrices(rot_params);
     auto trans_vec = SensorConfig::getTranslationMatrices();
 
-    std::vector<std::unique_ptr<Boundary_detection>> detections;
-    for (auto &file : pcap_files) 
-    {
-        detections.push_back(std::unique_ptr<Boundary_detection> (new Boundary_detection(0., 1.125)));
-    }
+    // Boundary detection object
+    Boundary_detection detection(0., 1.125, "20191126163620/", 0, 1324);
 
     // Virtual scan object
     FastVirtualScan virtualscan = FastVirtualScan();
@@ -152,9 +148,7 @@ int main(int argc, char* argv[])
 
     // Main loop
     int frame_idx = 0;
-    while (reader.isRun() && !viewer.wasStopped()) 
-    // while (detections[0]->capture->isRun() && !viewer.wasStopped()) 
-    // for (int idx = 1750; idx < 2250; idx++) 
+    while (detection.isRun() && !viewer.wasStopped()) 
     {
         if (sig_caught)
         {
@@ -170,27 +164,13 @@ int main(int argc, char* argv[])
         std::vector<std::vector<cv::Vec3f>> buffers(numOfVelodynes); 
         std::vector<std::vector<bool>> results(numOfVelodynes); 
         std::vector<std::vector<int>> results_int(numOfVelodynes); 
-        
-        // // Read in one frame and run detection
-        // std::thread th[numOfVelodynes];
-        // for (int i = 0; i < numOfVelodynes; i++) 
-        // {
-        //     // Convert to 3-dimention Coordinates
-        //     th[i] = std::thread(capture_and_detect_bool, std::ref(detections[i]), std::ref(buffers[i]), std::ref(results[i]), rot_params[i], std::ref(rot_vec[i]), std::ref(trans_vec[i]));
-        // }
-        // for (int i = 0; i < numOfVelodynes; i++) 
-        // {
-        //     th[i].join();
-        // }
-        
-        // captureFromBinaryFiles(idx, buffers[0], results[0], 16.0f, 1.125f); 
-        
-        // auto pointcloud = detections[0]->get_pointcloud();
-        // reader >> pointcloud;
-        reader >> detections[0]->get_pointcloud();
-        detections[0]->detect(rot_vec[0], trans_vec[0]);
-        LidarViewer::pushToBuffer(buffers[0], detections[0]->get_pointcloud());
-        results[0] = std::vector<bool>(detections[0]->get_pointcloud().size(), false);
+
+        // Read in data 
+        detection.retrieveData();
+        detection.pointcloud_preprocessing(rot_vec[0]); 
+        auto &pointcloud = detection.get_pointcloud();
+        LidarViewer::pushToBuffer(buffers[0], pointcloud);
+        results[0] = std::vector<bool>(pointcloud.size(), false);
         
         auto t_start = std::chrono::system_clock::now();
         // Run virtualscan algorithm 
@@ -202,18 +182,18 @@ int main(int argc, char* argv[])
                                    PASSHEIGHT, beams);
 
         auto res = getVscanResult(virtualscan, beams);
-        // auto buf = vectorToVec3f(res);
         auto t_end = std::chrono::system_clock::now();
 
-        auto buf = detections[0]->getLidarBuffers(detections[0]->get_pointcloud(), detections[0]->get_result_bool());
-        std::vector<cv::viz::WPolyLine> thirdOrder = fuser.displayThirdOrder(buf[1]);
-
-        results[0] = detections[0]->get_result_bool();
+        detection.detect(rot_vec[0], trans_vec[0]);
+        
+        auto buf = detection.getLidarBuffers(detection.get_pointcloud(), detection.get_result_bool());
+        std::vector<cv::viz::WPolyLine> thirdOrder = detection.getThirdOrderLines(buf[1]);
+        results[0] = detection.get_result_bool();
+        
         LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res, thirdOrder);
 
-        // auto t_end = std::chrono::system_clock::now();
         std::chrono::duration<double, std::milli> fp_ms = t_end - t_start;
-        std::cout << "Frame " << frame_idx++ << ": takes " << fp_ms.count() << " ms for vscan" << std::endl;
+        std::cout << "Frame " << frame_idx++ << ": takes " << fp_ms.count() << " ms for updating viewer" << std::endl;
         if (frame_idx >= 10)
         {
             total_ms += fp_ms.count();
@@ -221,6 +201,5 @@ int main(int argc, char* argv[])
     }
     viewer.close();
     std::cout << "Average time per frame: " << (total_ms / (frame_idx-10)) << " ms\n";
-
     return 0;
 }
