@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <Python.h>
 
 #include <Eigen/Dense>
 
@@ -33,7 +34,81 @@
 #define THETA_R 0.00356999
 #define MIN_CURB_HEIGHT 0.05
 
-using namespace std::chrono;
+class Object_detection {
+public:
+    Object_detection() {
+        // path of the virtual env
+        setenv("PYTHONHOME", "/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection_cpp/env/", true);
+        Py_Initialize();
+        if ( !Py_IsInitialized() ){
+            std::cerr << "Initialize failed\n";
+        }
+        else std::cout << "Python interpreter initialized\n";
+        PyRun_SimpleString("import sys");
+        PyRun_SimpleString("sys.path.append('./')");
+        this->pName = PyString_FromString("detector");
+	    this->pModule = PyImport_Import(this->pName);
+	    if ( !this->pModule ){
+	    	std::cerr << "Can't find Module\n";
+	    	PyErr_Print();
+	    }
+        this->python_class = PyObject_GetAttrString(this->pModule, "ObjectDetector");
+        if ( !this->python_class) std::cerr <<"can't get python class [ObjectDetector]\n";
+        if (PyCallable_Check(python_class)) {
+            std::cout << "Instatiate python class object\n";
+            object = PyObject_CallObject(python_class, nullptr);
+        }
+        else {
+            std::cerr <<"can't instatiate python class [ObjectDetector]\n";
+        }
+        std::cout << "------------------------------------------------------\n";
+        this->img_width = 1280;
+        this->img_height = 1024;
+        this->ROI_height = 400;
+        this->ROI_offset_y = 200;
+    }
+    
+    ~Object_detection() {
+        Py_DECREF(this->pName);
+        Py_DECREF(this->pModule);
+        Py_DECREF(this->python_class);
+        Py_DECREF(this->object);
+        Py_Finalize();
+        std::cout << "Close Python interpreter\n";
+    }
+
+    PyObject* call_method(char *method, std::string filename) {
+    	PyObject* res;
+        res = PyObject_CallMethod(this->object, method, "(s)", filename.c_str());
+        if (!res) PyErr_Print();
+        return res;
+    }
+
+    std::vector<float> listTupleToVector(PyObject *data_in) {
+        std::vector<float> data;
+        if (PyTuple_Check(data_in)) {
+            for (Py_ssize_t i = 0; i < PyTuple_Size(data_in); i++) {
+                PyObject* value = PyTuple_GetItem(data_in, i);
+                data.push_back( PyFloat_AsDouble(value) );
+            }
+        }
+        else {
+            if (PyList_Check(data_in)) {
+                for (Py_ssize_t i = 0; i < PyList_Size(data_in); i++) {
+                    PyObject* value = PyList_GetItem(data_in, i);
+                    data.push_back( PyFloat_AsDouble(value) );
+                }
+            }           
+            else throw std::logic_error("Passed PyObject pointer is not a list or tuple."); 
+        }
+        return data;
+    }
+
+    int img_width, img_height, ROI_height, ROI_offset_y;
+
+private:
+    PyObject *pName, *pModule, *python_class, *object;
+};
 
 typedef boost::interprocess::allocator<cv::Vec3f, boost::interprocess::managed_shared_memory::segment_manager>  ShmemAllocator;
 typedef boost::interprocess::vector<cv::Vec3f, ShmemAllocator> radar_shared;
@@ -46,16 +121,24 @@ private:
         CLOCKWISE,
         COUNTER_CLOCKWISE
     };
+    enum class DataType
+    {
+        LIDAR,
+        LIDAR_CAMERA,
+        LIDAR_CAMERA_RADAR
+    };
 public:
-    Boundary_detection(float tilted_angle, float sensor_height, std::string data_path, int start, int end): 
-                        num_of_scan(16), dataReader(data_path, start, end), 
-                        tilted_angle(tilted_angle), sensor_height(sensor_height) 
+    Boundary_detection(float tilted_angle, float sensor_height, std::string data_folder, int start, int end): 
+                        num_of_scan(16), dataReader(data_folder, start, end), 
+                        tilted_angle(tilted_angle), sensor_height(sensor_height),
+                        currentFrameIdx(start), data_folder(data_folder)
     {
         ranges = std::vector<std::vector<int>>(32, std::vector<int>(2));
         angles = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
         //timedFunction(std::bind(&Boundary_detection::expose, this), 100);
         fuser = fusion::FusionController();
+        object_detector = std::unique_ptr<Object_detection>(new Object_detection());
     } 
     Boundary_detection(float tilted_angle, float sensor_height, std::string data_path): 
                         num_of_scan(16), dataReader(data_path), 
@@ -71,7 +154,7 @@ public:
     bool isRun();
     void retrieveData();
     void pointcloud_preprocessing(const cv::Mat &rot);
-    void detect(const cv::Mat &rot, const cv::Mat &trans);
+    void runDetection(const cv::Mat &rot, const cv::Mat &trans);
     std::vector<std::vector<float>>& get_pointcloud();
     std::vector<int> get_result();
     std::vector<bool> get_result_bool();
@@ -93,6 +176,11 @@ private:
     void edge_filter_from_elevation(int scan_id, const std::vector<int> &elevation, std::vector<bool> &edge_start, std::vector<bool> &edge_end);
     float distance_to_line(cv::Point2f p1, cv::Point2f p2);
 
+    std::string get_filename_image(std::string root_dir, std::string folder, int frame_idx);
+    std::vector<std::vector<float>> get_image_points();
+    bool is_in_bounding_box(const std::vector<float> &point, const std::vector<std::vector<int>> &bounding_boxes);
+    bool find_objects_from_image(std::string filename, cv::Mat &img);
+
     void find_boundary_from_half_scan(int scan_id, int k, bool masking);
 
     void reset();    
@@ -107,11 +195,21 @@ private:
             };
     
 private:
+    // Radar
     bool firstRun = true;
     bool secondRun = false;
     fusion::FusionController fuser;
 
+    // Lidar
     DataReader::LidarDataReader dataReader;
+    std::string data_folder;
+
+    // Camera
+    std::vector<std::vector<float>> lidar_to_image = {{6.07818353e+02, -7.79647962e+02, -8.75258198e+00, 2.24308511e+01},
+                                                      {5.12565990e+02, 1.31878337e+01, -7.70608644e+02, -1.69836140e+02},
+                                                      {9.99862028e-01, -8.56083140e-03, 1.42350786e-02, 9.02290525e-03}};
+    std::unique_ptr<Object_detection> object_detector;
+    int currentFrameIdx;
 
     int num_of_scan;
     float tilted_angle;
@@ -119,6 +217,8 @@ private:
     std::vector<float> angles;
     
     std::vector<std::vector<float>> pointcloud;
+    std::vector<std::vector<float>> pointcloud_raw;
+    std::vector<int> index_mapping;
     std::vector<std::vector<int>> ranges;
     std::vector<cv::Vec3f> radar_pointcloud;
     std::vector<float> dist_to_origin;

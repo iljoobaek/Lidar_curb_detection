@@ -6,6 +6,7 @@ set( CMAKE_CXX_STANDARD_REQUIRED ON )
 set( CMAKE_CXX_EXTENSIONS OFF )
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# Set O3 optimization flag
 set( CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
 # Create Project
@@ -21,6 +22,16 @@ include_directories(vscan/include)
 
 set (SOURCES vscan/FastVirtualScan/fastvirtualscan.cpp boundary_detection.cpp Fusion.cpp data_reader.h sensor_config.h viewer.h VelodyneCapture.h main.cpp )
 add_executable( ${EXECUTABLE} ${SOURCES} )
+
+# Find Package Python2
+find_package(PythonInterp 2.7 REQUIRED)
+find_package(PythonLibs 2.7 REQUIRED)
+set(PROJECT_LIBRARIES ${PYTHON_LIBRARIES} )
+set(PROJECT_INCLUDES_PYTHON ${PYTHON_INCLUDE_DIRS} )
+MESSAGE(STATUS "PYTHON_LIBRARIES = ${PYTHON_LIBRARIES}")
+MESSAGE(STATUS "PYTHON_INCLUDE_DIRS = ${PYTHON_INCLUDE_DIRS}")
+include_directories(${PROJECT_INCLUDES_PYTHON})
+target_link_libraries(${EXECUTABLE} ${PROJECT_LIBRARIES})
 
 # *** Find the rosbag.so
 find_package(rosbag REQUIRED)

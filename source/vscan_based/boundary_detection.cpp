@@ -1,4 +1,5 @@
 #include "boundary_detection.h"
+using namespace std::chrono;
 
 template <typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
@@ -26,7 +27,8 @@ bool Boundary_detection::isRun()
 
 void Boundary_detection::retrieveData()
 {
-    dataReader >> pointcloud; 
+    dataReader >> pointcloud;
+    pointcloud_raw = pointcloud;
 }
 
 std::vector<cv::viz::WPolyLine> Boundary_detection::getThirdOrderLines(std::vector<cv::Vec3f> &buf)
@@ -49,11 +51,14 @@ void Boundary_detection::rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot
 
 void Boundary_detection::max_height_filter(float max_height)
 {
+    index_mapping.clear();
+    index_mapping.reserve(pointcloud.size());
     int cur = 0;
     for (int i = 0; i < this->pointcloud.size(); i++)
     { 
         if (this->pointcloud[i][2] < max_height)
         {
+            index_mapping.push_back(i);
             this->pointcloud[cur] = this->pointcloud[i];
             cur++;
         }
@@ -64,6 +69,7 @@ void Boundary_detection::max_height_filter(float max_height)
 void Boundary_detection::rearrange_pointcloud() 
 {
     std::vector<std::vector<float>> pointcloud_copy(this->pointcloud.begin(), this->pointcloud.end());
+    std::vector<int> index_mapping_copy(index_mapping.begin(), index_mapping.end());
     int cur_idx = 0;
     for (int i = 0; i < num_of_scan; i++)
     {
@@ -71,6 +77,7 @@ void Boundary_detection::rearrange_pointcloud()
         auto iter = pointcloud_copy.begin();
         while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const std::vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] > 0; })) != pointcloud_copy.end())
         {
+            index_mapping[cur_idx] = index_mapping_copy[(iter-pointcloud_copy.begin())];
             this->pointcloud[cur_idx++] = (*iter);
             iter++;
         }
@@ -79,6 +86,7 @@ void Boundary_detection::rearrange_pointcloud()
         iter = pointcloud_copy.begin();
         while ((iter = std::find_if(iter, pointcloud_copy.end(), [&](const std::vector<float> &point) { return point[4] == static_cast<float>(i) && point[6] <= 0; })) != pointcloud_copy.end())
         {
+            index_mapping[cur_idx] = index_mapping_copy[(iter-pointcloud_copy.begin())];
             this->pointcloud[cur_idx++] = (*iter);
             iter++;
         }
@@ -86,14 +94,6 @@ void Boundary_detection::rearrange_pointcloud()
     }
     assert(cur_idx == this->pointcloud.size());
 }
-
-// void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
-// {
-//     rotate_and_translate_multi_lidar_yaw(rot);
-//     reset();
-//     // auto t_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-//     // auto t_end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() - t_start;
-// }
 
 void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
 {
@@ -508,8 +508,23 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     }
 }
 
-void Boundary_detection::detect(const cv::Mat &rot, const cv::Mat &trans) 
+void Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans) 
 {
+    std::string fn_image = get_filename_image("/home/rtml/lidar_radar_fusion_curb_detection/data/", data_folder, currentFrameIdx++);
+    std::cout << fn_image << std::endl;
+    cv::Mat img = cv::imread(fn_image);
+    if (find_objects_from_image(fn_image, img))
+    {   
+        std::cout << "--- moving objects detected---\n";
+    }
+    else
+    {
+        std::cout << "--- no objects detected---\n";
+    }
+    cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
+    cv::imshow("image", img);
+    cv::waitKey(1);
+    
     for (int i = 0; i < 32; i++)
     {
         find_boundary_from_half_scan(i, 8, false);
@@ -530,6 +545,76 @@ void Boundary_detection::reset()
     this->is_edge_start = std::vector<bool>(this->pointcloud.size(), false);
     this->is_edge_end = std::vector<bool>(this->pointcloud.size(), false);
     this->is_objects = std::vector<bool>(this->pointcloud.size(), false);
+}
+
+std::vector<std::vector<float>> Boundary_detection::get_image_points()
+{
+    std::vector<std::vector<float>> image_points(pointcloud.size(), std::vector<float>(2));
+    for (int i = 0; i < image_points.size(); i++)
+    {
+        float scale = lidar_to_image[2][0] * pointcloud_raw[index_mapping[i]][0] + lidar_to_image[2][1] * pointcloud_raw[index_mapping[i]][1] + lidar_to_image[2][2] * pointcloud_raw[index_mapping[i]][2] + lidar_to_image[2][3];
+        image_points[i][0] = (lidar_to_image[0][0] * pointcloud_raw[index_mapping[i]][0] + lidar_to_image[0][1] * pointcloud_raw[index_mapping[i]][1] + lidar_to_image[0][2] * pointcloud_raw[index_mapping[i]][2] + lidar_to_image[0][3]) / scale;
+        image_points[i][1] = (lidar_to_image[1][0] * pointcloud_raw[index_mapping[i]][0] + lidar_to_image[1][1] * pointcloud_raw[index_mapping[i]][1] + lidar_to_image[1][2] * pointcloud_raw[index_mapping[i]][2] + lidar_to_image[1][3]) / scale;
+    }
+    return image_points;
+}
+
+bool Boundary_detection::is_in_bounding_box(const std::vector<float> &img_point, const std::vector<std::vector<int>> &bounding_boxes)
+{
+    for (auto &box : bounding_boxes)
+    {
+        if (box[1] <= img_point[0] && img_point[0] <= box[3] && box[0] <= img_point[1] && img_point[1] <= box[2])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Boundary_detection::find_objects_from_image(std::string filename, cv::Mat &img)
+{
+    PyObject *data = object_detector->call_method("run", filename);
+    std::vector<std::vector<int>> bounding_boxes;
+    if (data)
+    {
+        auto box = object_detector->listTupleToVector(data);
+        for (int i = 0; i < box.size() / 4; i++)
+        {
+            bounding_boxes.push_back({box[i * 4] * object_detector->ROI_height + object_detector->ROI_offset_y, box[i * 4 + 1] * object_detector->img_width, box[i * 4 + 2] * object_detector->ROI_height + object_detector->ROI_offset_y, box[i * 4 + 3] * object_detector->img_width});
+        }
+    }
+    else
+    {
+        return false;
+    }
+    auto image_points = get_image_points();
+    for (auto &box : bounding_boxes)
+        cv::rectangle(img, cv::Point(box[1], box[0]), cv::Point(box[3], box[2]), cv::Scalar(255, 255, 255));
+    int cnt = 0;
+    for (int i = 0; i < image_points.size(); i++)
+    {
+        if (is_in_bounding_box(image_points[i], bounding_boxes))
+        {
+            cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(0, 255, 0));
+            this->is_objects[i] = true;
+            cnt++;
+        }
+        else
+        {
+            cv::circle(img, cv::Point((int)image_points[i][0], (int)image_points[i][1]), 1, cv::Scalar(255, 0, 0));
+            this->is_objects[i] = false;
+        }
+    }
+    std::cout << "Found " << cnt << " points from " << image_points.size() << std::endl;
+    return true;
+}
+
+std::string Boundary_detection::get_filename_image(std::string root_dir, std::string folder, int frame_idx)
+{
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(10) << frame_idx;
+    std::string filename = root_dir + folder + "image_01/data/" + ss.str() + ".png";
+    return filename;
 }
 
 std::vector<std::vector<float>>& Boundary_detection::get_pointcloud() 
