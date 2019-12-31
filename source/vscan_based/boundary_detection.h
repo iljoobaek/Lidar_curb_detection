@@ -154,12 +154,15 @@ public:
     bool isRun();
     void retrieveData();
     void pointcloud_preprocessing(const cv::Mat &rot);
-    void runDetection(const cv::Mat &rot, const cv::Mat &trans);
+    std::vector<std::vector<cv::Vec3f>> runDetection(const cv::Mat &rot, const cv::Mat &trans);
     std::vector<std::vector<float>>& get_pointcloud();
     std::vector<int> get_result();
     std::vector<bool> get_result_bool();
     std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result);
     std::vector<cv::viz::WPolyLine> getThirdOrderLines(std::vector<cv::Vec3f> &buf); 
+    std::vector<float> getLeftBoundaryCoeffs();
+    std::vector<float> getRightBoundaryCoeffs();
+    void writeResultTotxt(const std::vector<float> &boundaryCoeffs, int leftRight);
 
 private:
     void rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot);
