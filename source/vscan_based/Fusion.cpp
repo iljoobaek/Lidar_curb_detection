@@ -4,12 +4,21 @@
 #include <numeric>
 
 #include <opencv2/opencv.hpp>
+#include <Eigen/Dense>
+
+using namespace Eigen;
+#define PI 3.14159265
 
 namespace fusion {
 
 class FusionController {
 public:
     FusionController() {}
+
+    enum class Boundary {
+        left,
+        right
+    };
 
     struct Line {
         float b, m, r2, lowerBound, upperBound, avgX;
@@ -107,9 +116,13 @@ public:
 
     std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints)
     {
+        leftPolyLineCoeffs.clear();
+        rightPolyLineCoeffs.clear();
         std::vector<std::vector<cv::Vec3f> > lines = findLidarLine(lidarPoints);
-        cv::viz::WPolyLine left = thirdOrderlsq(lines[0], confidenceLeft);
-        cv::viz::WPolyLine right = thirdOrderlsq(lines[1], confidenceRight);
+        // cv::viz::WPolyLine left = thirdOrderlsq(lines[0], confidenceLeft);
+        // cv::viz::WPolyLine right = thirdOrderlsq(lines[1], confidenceRight);
+        cv::viz::WPolyLine left = thirdOrderlsq_eigen(lines[0], confidenceLeft, FusionController::Boundary::left);
+        cv::viz::WPolyLine right = thirdOrderlsq_eigen(lines[1], confidenceRight, FusionController::Boundary::right);
         std::vector<cv::viz::WPolyLine> displayLines = { left, right };
         return displayLines;
     }
@@ -292,11 +305,11 @@ public:
             std::vector<cv::Vec3f> zero;
             zero.push_back(cv::Vec3f(0, 0, 0));
             cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
-            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
         if (x.size() == 0) {
             cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
-            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
         auto minmaxX = std::minmax_element(x.begin(), x.end());
         float xRange = *minmaxX.second - *minmaxX.first;
@@ -373,8 +386,12 @@ public:
             a[i] /= B[i][i]; // (3)
         }
         std::vector<float> coeffs;
-        for (size_t i = 0; i < a.size(); ++i)
+        for (size_t i = 0; i < a.size(); ++i) {
             coeffs.push_back(a[i]);
+            std::cout << a[i] << " ";
+        }
+        std::cout << std::endl;
+
         std::vector<cv::Vec3f> linePoints;
         for (int i = *minmaxX.first * 100; i <= *minmaxX.second * 100; i++) {
             linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i / 100. + coeffs[2] * powf(i / 100., 2) + coeffs[3] * powf(i / 100., 3), i / 100., 0));
@@ -383,14 +400,75 @@ public:
             std::vector<cv::Vec3f> zero;
             zero.push_back(cv::Vec3f(0, 0, 0));
             cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
-            cv::viz::WPolyLine wline(pointsMat, cv::viz::Color::blue());
-            wline.setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
-            return wline;
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
         cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
-        cv::viz::WPolyLine wline(pointsMat, cv::viz::Color::blue());
-        wline.setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
-        return wline;
+        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+    }
+    
+    cv::viz::WPolyLine thirdOrderlsq_eigen(std::vector<cv::Vec3f>& points, float confidence, FusionController::Boundary boundary)
+    {
+        std::vector<float> x, y;
+        for (int i = 0; i < points.size(); i++) {
+            //It is reversed, the xDistance is y in the y = mx+b, and yDistance is x
+            y.push_back(points[i][0]);
+            x.push_back(points[i][1]);
+        }
+        if (confidence < 0.5) {
+            std::vector<cv::Vec3f> zero;
+            zero.push_back(cv::Vec3f(0, 0, 0));
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        }
+        if (x.size() == 0) {
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(points.size()), 1, CV_32FC3, &points[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        }
+        auto minmaxX = std::minmax_element(x.begin(), x.end());
+        float xRange = *minmaxX.second - *minmaxX.first;
+        size_t N = x.size();
+        int order = 3;
+
+        // Eigen Matrix to solve Ax = b, where x is the coefficients of the polynomials
+        MatrixXf A(N, order+1);
+        VectorXf b(N);
+        for (int i = 0; i < N; i++) {
+            A(i, 0) = std::pow(x.at(i), 3);
+            A(i, 1) = std::pow(x.at(i), 2);
+            A(i, 2) = std::pow(x.at(i), 1);
+            A(i, 3) = 1.0f;
+        }
+        for (int i = 0; i < N; i++) {
+            b(i) = y.at(i);
+        }
+        
+        VectorXf solution = A.colPivHouseholderQr().solve(b);
+        std::cout << "The least-squares solution is:\n"
+                << solution << std::endl;
+
+        std::vector<float> coeffs;
+        for (size_t i = 0; i < order+1; ++i) {
+            coeffs.push_back(solution(i));
+            if (boundary == FusionController::Boundary::left) {
+                leftPolyLineCoeffs.push_back(solution[i]);
+            }
+            else {
+                rightPolyLineCoeffs.push_back(solution[i]);
+            }
+        }
+        std::reverse(coeffs.begin(), coeffs.end());  // reverse from [C3, C2, C1, C0] to [C0, C1, C2, C3]
+        std::vector<cv::Vec3f> linePoints;
+        for (int i = *minmaxX.first * 100; i <= *minmaxX.second * 100; i++) {
+            linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i / 100. + coeffs[2] * powf(i / 100., 2) + coeffs[3] * powf(i / 100., 3), i / 100., 0));
+        }
+        if (xRange < (coeffs[0] + coeffs[1] * *minmaxX.second + coeffs[2] * powf(*minmaxX.second, 2) + coeffs[3] * powf(*minmaxX.second / 100., 3)) - (coeffs[0] + coeffs[1] * *minmaxX.first + coeffs[2] * powf(*minmaxX.first, 2) + coeffs[3] * powf(*minmaxX.first / 100., 3))) {
+            std::vector<cv::Vec3f> zero;
+            zero.push_back(cv::Vec3f(0, 0, 0));
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+            return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+        }
+        cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
+        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::red());
     }
 
     Line linearlsq(std::vector<cv::Vec3f>& points)
@@ -563,6 +641,14 @@ public:
         delete[] ipRepetition;
         return static_cast<float>(data[iMaxRepeat]);
     }
+    
+    std::vector<float> getLeftCoeffs() {
+        return leftPolyLineCoeffs;
+    }
+    
+    std::vector<float> getRightCoeffs() {
+        return rightPolyLineCoeffs;
+    }
 
 private:
     std::deque<Line> leftLidarLines;
@@ -571,5 +657,7 @@ private:
     std::deque<RadarBoundary> rightRadarBoundary;
     float confidenceLeft = 0;
     float confidenceRight = 0;
+    std::vector<float> leftPolyLineCoeffs;
+    std::vector<float> rightPolyLineCoeffs;
 };
 }
