@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
 
     // Boundary detection object
     int frameStart = 601, frameEnd = 650;
-    Boundary_detection detection(0., 1.125, "20191126163620_synced/", frameStart, frameEnd+1);
+    Boundary_detection detection(0., 1.125, "/home/rtml/lidar_radar_fusion_curb_detection/data/", "20191126163620_synced/", frameStart, frameEnd+1);
 
     // Virtual scan object
     FastVirtualScan virtualscan = FastVirtualScan();

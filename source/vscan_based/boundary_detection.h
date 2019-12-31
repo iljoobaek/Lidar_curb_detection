@@ -128,8 +128,8 @@ private:
         LIDAR_CAMERA_RADAR
     };
 public:
-    Boundary_detection(float tilted_angle, float sensor_height, std::string data_folder, int start, int end): 
-                        num_of_scan(16), dataReader(data_folder, start, end), 
+    Boundary_detection(float tilted_angle, float sensor_height, std::string root_path, std::string data_folder, int start, int end): 
+                        num_of_scan(16), dataReader(root_path, data_folder, start, end), 
                         tilted_angle(tilted_angle), sensor_height(sensor_height),
                         currentFrameIdx(start), data_folder(data_folder)
     {
