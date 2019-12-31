@@ -36,6 +36,52 @@ std::vector<cv::viz::WPolyLine> Boundary_detection::getThirdOrderLines(std::vect
     return fuser.displayThirdOrder(buf);
 }
 
+std::vector<float> Boundary_detection::getLeftBoundaryCoeffs()
+{
+    return fuser.getLeftCoeffs();
+}
+
+std::vector<float> Boundary_detection::getRightBoundaryCoeffs()
+{
+    return fuser.getRightCoeffs();
+}
+
+void Boundary_detection::writeResultTotxt(const std::vector<float> &boundaryCoeffs, int leftRight)
+{
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(10) << currentFrameIdx;
+    std::string fn = "detection_result/" + ss.str();
+    fn += (leftRight == 0) ? "_l.txt" : "_r.txt";
+
+    std::ofstream file_out;
+    file_out.open(fn);   
+    if (boundaryCoeffs.empty()) {
+        file_out << "null\n";
+    }
+    else {
+        std::stringstream ss;
+        ss << boundaryCoeffs[0] << " " << boundaryCoeffs[1] << " " << boundaryCoeffs[2] << " "  << boundaryCoeffs[3] << "\n";
+        file_out << ss.str();
+        for (int i = 0; i < 32; i++)
+        {
+            if (i % 2 == leftRight) // left or right scan
+            {
+                for (int j = this->ranges[i][0]; j < this->ranges[i][1]; j++)
+                {
+                    if (is_boundary[j])
+                    {
+                        ss.str("");
+                        ss.clear();
+                        ss << this->pointcloud[j][0] << " " << this->pointcloud[j][1] << " " << this->pointcloud[j][2] << "\n";
+                        file_out << ss.str();
+                    }
+                }
+            }
+        }
+    }
+    file_out.close();
+}
+
 void Boundary_detection::rotate_and_translate_multi_lidar_yaw(const cv::Mat &rot)
 {
     if (this->pointcloud.empty()) return;
@@ -508,9 +554,9 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     }
 }
 
-void Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans) 
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans) 
 {
-    std::string fn_image = get_filename_image("/home/rtml/lidar_radar_fusion_curb_detection/data/", data_folder, currentFrameIdx++);
+    std::string fn_image = get_filename_image("/home/rtml/lidar_radar_fusion_curb_detection/data/", data_folder, currentFrameIdx);
     std::cout << fn_image << std::endl;
     cv::Mat img = cv::imread(fn_image);
     if (find_objects_from_image(fn_image, img))
@@ -531,6 +577,14 @@ void Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans)
     }
     // If radar data available, read the data from shared memory
 
+    auto buf = getLidarBuffers(pointcloud, is_boundary);
+
+    // std::vector<float> leftBoundaryCoeffs = getLeftBoundaryCoeffs();;
+    // std::vector<float> rightBoundaryCoeffs = getRightBoundaryCoeffs();;
+    // writeResultTotxt(leftBoundaryCoeffs, 0);
+    // writeResultTotxt(rightBoundaryCoeffs, 1);
+    currentFrameIdx++;
+    return buf;
 }
 
 void Boundary_detection::reset()
