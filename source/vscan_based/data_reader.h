@@ -34,7 +34,7 @@ public:
             capture = new velodyne::VLP16Capture(fn); 
         }
     }
-    LidarDataReader(std::string fn, int start, int end) : filename(fn)
+    LidarDataReader(std::string rootPath, std::string fn, int start, int end) : rootPath(rootPath), filename(fn)
     {
         type = DataType::BINARIES;
         for (int i = start; i < end; i++)
@@ -132,7 +132,8 @@ public:
     {
         std::stringstream ss;
         ss << std::setfill('0') << std::setw(10) << frame_idx;
-        std::string filename = "/home/rtml/lidar_radar_fusion_curb_detection/data/" + root_dir + "velodyne_points/data/" + ss.str() + ".bin";
+        // std::string filename = "/home/rtml/lidar_radar_fusion_curb_detection/data/" + root_dir + "velodyne_points/data/" + ss.str() + ".bin";
+        std::string filename = rootPath + root_dir + "velodyne_points/data/" + ss.str() + ".bin";
         return filename;
     }
     bool isRun()
@@ -169,6 +170,7 @@ public:
     }
 
 private:
+    std::string rootPath;
     std::string filename;
     // Sensor info
     float theta;
