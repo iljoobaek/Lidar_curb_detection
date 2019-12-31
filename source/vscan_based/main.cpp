@@ -6,7 +6,7 @@
 
 #include "fastvirtualscan/fastvirtualscan.h"
 
-// static int BEAMNUM = 1440;
+// Parameters for virtual scan
 static int BEAMNUM = 720;
 static double STEP = 0.05;
 static double MINFLOOR = -2.0;
@@ -62,6 +62,69 @@ std::vector<cv::Vec3f> vectorToVec3f(const std::vector<std::vector<float>> &vec)
     return res;
 }
 
+std::string getEvalFilename(const std::string &root, int frameIdx)
+{
+    std::stringstream ss;
+    ss << std::setfill('0') << std::setw(10) << frameIdx;
+    std::string filename = root + "/gt_" + ss.str() + "_r.txt"; 
+    return filename; 
+}
+
+cv::viz::WPolyLine generateWPolyLine(std::vector<float> coeffs, float minY, float maxY)
+{
+    std::vector<cv::Vec3f> linePoints;
+    for (int i = minY * 100; i <= maxY * 100; i++) {
+        // Check the order of coeffs !
+        linePoints.push_back(cv::Vec3f(coeffs[3] + coeffs[2] * i / 100. + coeffs[1] * powf(i / 100., 2) + coeffs[0] * powf(i / 100., 3), i / 100., 0));
+    }
+    cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
+    return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
+}
+
+cv::viz::WPolyLine generateGTWPolyLine(const std::string &root, int frameIdx)
+{
+    std::string filename = getEvalFilename(root, frameIdx);
+    std::ifstream f(filename);
+    std::vector<std::vector<float>> data;
+    if (f.is_open()) 
+    {
+        std::string line;
+        while (getline(f, line))
+        {
+            std::stringstream ss(line);
+            std::vector<float> v;
+            float num;   
+            while (ss >> num)
+            {
+                v.push_back(num);   
+            }
+            data.push_back(v);
+        }
+        std::vector<float> y;
+        for (int i = 1; i < data.size(); i++)
+        {
+            y.push_back(data[i][1]);   
+        }
+        auto minmaxY = std::minmax_element(y.begin(), y.end());
+        for (auto & i : data[0])
+        {
+            std::cout << i << "  ";
+        }
+        std::cout << std::endl;
+        return generateWPolyLine(data[0], *minmaxY.first, *minmaxY.second);
+    }
+    else
+    {
+        std::cerr << "file not opened\n";
+    }
+    std::vector<cv::Vec3f> zero;
+    zero.push_back(cv::Vec3f(0, 0, 0));
+    cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+    return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
+}
+
+std::string evalPath = "/home/rtml/Lidar_curb_detection/source/evaluation/gt_generator/evaluation_result";
+
 int main(int argc, char* argv[]) 
 {
     // Number of velodyne sensors, maximum 6
@@ -103,7 +166,8 @@ int main(int argc, char* argv[])
     auto trans_vec = SensorConfig::getTranslationMatrices();
 
     // Boundary detection object
-    Boundary_detection detection(0., 1.125, "20191126163620_synced/", 600, 932);
+    int frameStart = 601, frameEnd = 650;
+    Boundary_detection detection(0., 1.125, "20191126163620_synced/", frameStart, frameEnd+1);
 
     // Virtual scan object
     FastVirtualScan virtualscan = FastVirtualScan();
@@ -147,13 +211,15 @@ int main(int argc, char* argv[])
         auto res = getVscanResult(virtualscan, beams);
         auto t_end = std::chrono::system_clock::now();
 
-        detection.runDetection(rot_vec[0], trans_vec[0]);
+        auto buf = detection.runDetection(rot_vec[0], trans_vec[0]);
         
-        auto buf = detection.getLidarBuffers(detection.get_pointcloud(), detection.get_result_bool());
+        // auto buf = detection.getLidarBuffers(detection.get_pointcloud(), detection.get_result_bool());
         std::vector<cv::viz::WPolyLine> thirdOrder = detection.getThirdOrderLines(buf[1]);
         results[0] = detection.get_result_bool();
-        
-        LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res, thirdOrder);
+
+        cv::viz::WPolyLine gtLine = generateGTWPolyLine(evalPath, frameStart+frame_idx);
+
+        LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res, thirdOrder, gtLine);
 
         std::chrono::duration<double, std::milli> fp_ms = t_end - t_start;
         std::cout << "Frame " << frame_idx++ << ": takes " << fp_ms.count() << " ms for vsan" << std::endl;
