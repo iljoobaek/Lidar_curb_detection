@@ -36,7 +36,8 @@ void cvViz3dCallbackSetting(cv::viz::Viz3d &viewer, bool &pause)
         , &pause);
 }
 
-void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<bool>> &results, cv::viz::Viz3d &viewer, std::vector<std::vector<float>> &vscanRes, std::vector<cv::viz::WPolyLine> &polyLine) 
+// Visualize vscan result, ground truth lines and detected lines
+void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<bool>> &results, cv::viz::Viz3d &viewer, std::vector<std::vector<float>> &vscanRes, std::vector<cv::viz::WPolyLine> &polyLine, cv::viz::WPolyLine &gtLine) 
 {
     // if (buffers[0].empty()) {return;}
     viewer.removeAllWidgets();
@@ -67,7 +68,6 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
         line.setRenderingProperty(cv::viz::LINE_WIDTH, 5.0); 
         viewer.showWidget("Line Widget"+std::to_string(cnt++), line);
     }
-    
     for (int i = 0; i < buffers.size(); i++) 
     {
         cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[i].size()), 1, CV_32FC3, &buffers[i][0]);
@@ -80,8 +80,11 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
             collection.addCloud(cloudMat, cv::viz::Color::white());
         }
     }
+    polyLine[0].setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
+    polyLine[1].setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
     viewer.showWidget("Poly Left", polyLine[0]);
     viewer.showWidget("Poly Right", polyLine[1]);
+    viewer.showWidget("Poly Right gt", gtLine);
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", collection);
     viewer.setRenderingProperty("Cloud", cv::viz::POINT_SIZE, 2.0);  // Set point size of the point cloud
@@ -89,11 +92,11 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
     viewer.spinOnce();
 }
 
+// Test the results coming with type int
 void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<int>> &results, cv::viz::Viz3d &viewer, std::vector<std::vector<float>> &vscanRes) 
 {
     // if (buffers[0].empty()) {return;}
     cv::viz::WCloudCollection collection;
-
     std::vector<cv::Vec3f> curbsBuffer_1;
     std::vector<cv::Vec3f> curbsBuffer_2;
     for (int i = 0; i < buffers.size(); i++) 
@@ -126,7 +129,6 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
         line.setRenderingProperty(cv::viz::LINE_WIDTH, 5.0); 
         viewer.showWidget("Line Widget", line);
     }
-    
     for (int i = 0; i < buffers.size(); i++) 
     {
         cv::Mat cloudMat = cv::Mat(static_cast<int>(buffers[i].size()), 1, CV_32FC3, &buffers[i][0]);
