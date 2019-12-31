@@ -8,6 +8,7 @@
 #include <sstream>
 #include <thread>
 #include <cmath>
+#include <unordered_set>
 
 #include <pcl/common/common_headers.h>
 #include <pcl/features/normal_3d.h>
@@ -25,6 +26,7 @@ using namespace std::chrono_literals;
 std::vector<std::string> labeled;
 std::vector<std::vector<float>> selected_points;
 std::vector<int> selected_points_indices;
+std::unordered_set<std::string> selected_points_set;
 
 std::string filename_left, filename_right;
 std::ofstream file;
@@ -144,12 +146,20 @@ void pointPickingEventOccurred(const pcl::visualization::PointPickingEvent& even
     }
     event.getPoint(x, y, z);
     std::stringstream ss;
-    ss << x << " " << y << " " << z << "\n";    
-    labeled.push_back(ss.str());
-    selected_points.push_back({x, y, z});
-    selected_points_indices.push_back(event.getPointIndex());
+    ss << x << " " << y << " " << z << "\n";
+    std::string newPoint = ss.str();    
+    if (selected_points_set.find(newPoint) == selected_points_set.end())
+    {
+        labeled.push_back(ss.str());
+        selected_points.push_back({x, y, z});
+        selected_points_indices.push_back(event.getPointIndex());
+        std::cout << "Point with index " << event.getPointIndex()  << " at ( " << x << ", " << y << ", " << z << " )" << std::endl;
+    }
+    else
+    {
+        std::cout << "Point with index" << event.getPointIndex() << "already selected\n";
+    }
     clicked = true;
-    std::cout << "Point with index " << event.getPointIndex()  << " at ( " << x << ", " << y << ", " << z << " )" << std::endl;
 }
 
 pcl::visualization::PCLVisualizer::Ptr interactionCustomizationVis (pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud, std::ofstream &file)
