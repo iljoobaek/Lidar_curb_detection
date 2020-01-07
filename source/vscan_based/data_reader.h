@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <set>
 #include <cmath>
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
@@ -19,6 +20,7 @@ class LidarDataReader
     {
         PCAP,
         BINARIES,
+        BINARIES_KITTI,
         ROSBAG
     };
 public:
@@ -34,9 +36,17 @@ public:
             capture = new velodyne::VLP16Capture(fn); 
         }
     }
-    LidarDataReader(std::string rootPath, std::string fn, int start, int end) : rootPath(rootPath), filename(fn)
+    LidarDataReader(std::string rootPath, std::string fn, int start, int end, bool isDownSample) 
+                                    : rootPath(rootPath), filename(fn), isDownSample(isDownSample)
     {
-        type = DataType::BINARIES;
+        if (rootPath.find("kitti") != std::string::npos)
+        {
+            type = DataType::BINARIES_KITTI; 
+        }
+        else
+        {
+            type = DataType::BINARIES;
+        }
         for (int i = start; i < end; i++)
         {
             binaryFiles.push_back(getBinaryFile(i, fn));
@@ -97,6 +107,74 @@ private:
         std::cout << "Read in " << pointcloud.size() << " points\n";
         return pointcloud;
     }
+    std::vector<std::vector<float>> readFromBinaryKitti(std::string &filename)
+    {
+        std::vector<double> centers;
+        std::ifstream in("centers.out");
+        std::string line;
+        if (in.is_open())
+        {
+            while (std::getline(in, line))
+            {
+                double angle = std::stod(line);
+                centers.push_back(angle);
+            }
+        }
+        in.close();
+        std::reverse(centers.begin(), centers.end());
+        std::vector<double> bounds;
+        for (int i = 0; i < centers.size()-1; i++)
+        {
+            bounds.push_back((centers[i] + centers[i+1]) / 2);
+        }
+        std::set<int> downSampleNumbers({3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63});
+
+        std::vector<std::vector<float>> pointcloud;
+        int32_t num = 1000000;
+        float *data = (float *)malloc(num * sizeof(float));
+        float *px = data, *py = data + 1, *pz = data + 2, *pi = data + 3;
+        FILE *stream = fopen(filename.c_str(), "rb");
+        num = fread(data, sizeof(float), num, stream) / 4;
+        for (int32_t i = 0; i < num; i++)
+        {
+            float dist = std::sqrt((*px) * (*px) + (*py) * (*py) + (*pz) * (*pz));
+            float theta = std::atan2(*py, *px) * 180.0f / CV_PI;
+            // Find the ring number here
+            int ring = getScanNumber(*px, *py, *pz , bounds);
+            if (ring >= 0 && ring < 64)
+            {
+                if (isDownSample)
+                {
+                    if (downSampleNumbers.find(ring) != downSampleNumbers.end()) 
+                    {
+                        ring /= 4;
+                        if (dist > 0.9f && *px >= 0.0f)
+                            pointcloud.push_back({*px, *py, *pz, *pi, (float)ring, dist, theta});
+                    }
+                }
+                else
+                {
+                    if (dist > 0.9f && *px >= 0.0f)
+                        pointcloud.push_back({*px, *py, *pz, *pi, (float)ring, dist, theta});
+                }
+            }
+            px += 4, py += 4, pz += 4, pi += 4;
+        }
+        fclose(stream);
+        std::cout << "Read in " << pointcloud.size() << " points\n";
+        return pointcloud;
+    }
+    int getScanNumber(float x, float y, float z, std::vector<double> &bounds)
+    {
+        double angle = std::atan(z / std::sqrt(x * x + y * y));
+        int scanNumber = 0;
+        while (angle > bounds[scanNumber])
+        {
+            scanNumber++;
+            if (scanNumber == 63) break;
+        }
+        return scanNumber;
+    }
     void rotateAndTranslate(std::vector<std::vector<float>> &pointcloud, float tilted_angle, float sensor_height)
     {
         // rotation matrix along x
@@ -138,7 +216,7 @@ public:
     }
     bool isRun()
     {
-        if (type == DataType::BINARIES)
+        if (type == DataType::BINARIES || type == DataType::BINARIES_KITTI)
         {
             if (currentFrame < binaryFiles.size())
             {
@@ -161,6 +239,10 @@ public:
         {
             pointcloud = readFromBinary(binaryFiles[currentFrame++]);
         }
+        else if (type == DataType::BINARIES_KITTI)
+        {
+            pointcloud = readFromBinaryKitti(binaryFiles[currentFrame++]);
+        }
         else if (type == DataType::PCAP)
         {
             std::vector<velodyne::Laser> lasers;
@@ -173,6 +255,7 @@ private:
     std::string rootPath;
     std::string filename;
     // Sensor info
+    bool isDownSample = false;
     float theta;
     cv::Mat rot, trans;
     DataType type;

@@ -468,7 +468,7 @@ public:
             return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
         }
         cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
-        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::red());
+        return cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
     }
 
     Line linearlsq(std::vector<cv::Vec3f>& points)

@@ -28,6 +28,7 @@ bool Boundary_detection::isRun()
 void Boundary_detection::retrieveData()
 {
     dataReader >> pointcloud;
+    std::reverse(pointcloud.begin(), pointcloud.end());
     pointcloud_raw = pointcloud;
 }
 
@@ -283,18 +284,18 @@ std::vector<int> Boundary_detection::elevation_filter(int scan_id) {
     {
         if (this->pointcloud[st + i][6] < 3.0)
             thres_z = 0.002;
-        if (z_diff[i] > thres_z)
+        if (z_diff[i] > 0.0)
             is_elevate[i] = 1;
     }
-    std::vector<int> filter({1,1,1,1,1,1,1,1,1});
-    auto res = conv(is_elevate, filter);
-    for (int i = 0; i < is_elevate.size(); i++)
-    {
-        if (res[i + 4] >= 4)
-            is_elevate[i] = 1;
-        else
-            is_elevate[i] = 0;
-    }
+    // std::vector<int> filter({1,1,1,1,1,1,1,1,1});
+    // auto res = conv(is_elevate, filter);
+    // for (int i = 0; i < is_elevate.size(); i++)
+    // {
+    //     if (res[i + 4] >= 4)
+    //         is_elevate[i] = 1;
+    //     else
+    //         is_elevate[i] = 0;
+    // }
     for (int i = 0; i < is_elevate.size(); i++)
     {
         if (is_elevate[i] > 0)
@@ -556,27 +557,28 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
 
 std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans) 
 {
-    std::string fn_image = get_filename_image("/home/rtml/lidar_radar_fusion_curb_detection/data/", data_folder, currentFrameIdx);
+    std::string fn_image = get_filename_image(root_path, data_folder, currentFrameIdx);
     std::cout << fn_image << std::endl;
     cv::Mat img = cv::imread(fn_image);
-    if (find_objects_from_image(fn_image, img))
-    {   
-        std::cout << "--- moving objects detected---\n";
-    }
-    else
-    {
-        std::cout << "--- no objects detected---\n";
-    }
-    cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
+    // if (find_objects_from_image(fn_image, img))
+    // {   
+    //     std::cout << "--- moving objects detected---\n";
+    // }
+    // else
+    // {
+    //     std::cout << "--- no objects detected---\n";
+    // }
+    // cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
     cv::imshow("image", img);
     cv::waitKey(1);
     
-    for (int i = 0; i < 32; i++)
+    for (int i = 0; i < num_of_scan*2; i++)
     {
         find_boundary_from_half_scan(i, 8, false);
     }
     // If radar data available, read the data from shared memory
 
+    // is_boundary = std::vector<bool>(pointcloud.size(), false);
     auto buf = getLidarBuffers(pointcloud, is_boundary);
 
     // std::vector<float> leftBoundaryCoeffs = getLeftBoundaryCoeffs();;
@@ -683,6 +685,37 @@ std::vector<int> Boundary_detection::get_result()
 
 std::vector<bool> Boundary_detection::get_result_bool() 
 {
+    // std::vector<bool> test;
+    // for (auto &point : pointcloud)
+    // {
+    //     if (point[4] == num_of_scan / 2)
+    //     {
+    //         test.push_back(true);
+    //     }
+    //     else
+    //     {
+    //         test.push_back(false);
+    //     }
+    // }
+    
+    // std::vector<bool> test(pointcloud.size(), false);
+    // for (int i = 0; i < ranges.size(); i++)
+    // {
+    //     if (i % 2 == 0 && ranges[i][0] != ranges[i][1])
+    //     {
+    //         // test[ranges[i][0]] = true;
+    //         int idx = ranges[i][0];
+    //         for (int j = 0; j < 5; j++)
+    //         {
+    //             if (idx + j >= 0 && idx + j < pointcloud.size())
+    //             {
+    //                 test[idx+j] = true;
+    //             }
+    //         }
+    //     }
+    // }
+    // return test;
+    
     return is_boundary;
 }
 
