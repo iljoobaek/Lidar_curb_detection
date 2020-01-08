@@ -134,6 +134,7 @@ public:
                         currentFrameIdx(start), root_path(root_path), data_folder(data_folder)
     {
         num_of_scan = isDownSample ? numOfScan / 4 : numOfScan;
+        isKitti = root_path.find("kitti") == std::string::npos ? false : true;
         ranges = std::vector<std::vector<int>>(num_of_scan*2, std::vector<int>(2));
         angles_16 = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
@@ -209,6 +210,7 @@ private:
     DataReader::LidarDataReader dataReader;
     std::string root_path;
     std::string data_folder;
+    bool isKitti;
 
     // Camera
     std::vector<std::vector<float>> lidar_to_image = {{6.07818353e+02, -7.79647962e+02, -8.75258198e+00, 2.24308511e+01},

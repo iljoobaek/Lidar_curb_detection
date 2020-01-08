@@ -28,7 +28,11 @@ bool Boundary_detection::isRun()
 void Boundary_detection::retrieveData()
 {
     dataReader >> pointcloud;
-    std::reverse(pointcloud.begin(), pointcloud.end());
+    // Reverse the order of the points if from kitti dataset
+    if (isKitti)
+    {
+        std::reverse(pointcloud.begin(), pointcloud.end());
+    }
     pointcloud_raw = pointcloud;
 }
 
