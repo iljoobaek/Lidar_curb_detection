@@ -115,7 +115,7 @@ cv::viz::WPolyLine generateGTWPolyLine(const std::string &root, int frameIdx)
     }
     else
     {
-        std::cerr << "file not opened\n";
+        std::cerr << "GT file not found\n";
     }
     std::vector<cv::Vec3f> zero;
     zero.push_back(cv::Vec3f(0, 0, 0));
@@ -153,7 +153,7 @@ int main(int argc, char* argv[])
     double total_ms = 0.0;
 
     // // Get pcap file names
-    // std::vector<std::string> pcap_files = SensorConfig::getPcapFiles(); 
+    std::vector<std::string> pcap_files = SensorConfig::getPcapFiles(); 
     
     // Create Viz3d Viewer and register callbacks
     cv::viz::Viz3d viewer( "Velodyne" );
@@ -165,10 +165,14 @@ int main(int argc, char* argv[])
     auto rot_vec = SensorConfig::getRotationMatrices(rot_params);
     auto trans_vec = SensorConfig::getTranslationMatrices();
 
-    // Boundary detection object
-    int frameStart = 601, frameEnd = 650;
-    Boundary_detection detection(0., 1.125, "/home/rtml/lidar_radar_fusion_curb_detection/data/", "20191126163620_synced/", frameStart, frameEnd+1);
-
+    // Boundary detection object : our data
+    // int frameStart = 601, frameEnd = 650;
+    // Boundary_detection detection(16, 1.125, "/home/rtml/lidar_radar_fusion_curb_detection/data/", "20191126163620_synced/", frameStart, frameEnd+1, false);
+    
+    // Boundary detection object : kitti data
+    int frameStart = 0, frameEnd = 100;
+    Boundary_detection detection(64, 1.125, "/home/rtml/LiDAR_camera_calibration_work/data/kitti_data/2011_09_26/", "2011_09_26_drive_0013_sync/", frameStart, frameEnd+1, false);
+    
     // Virtual scan object
     FastVirtualScan virtualscan = FastVirtualScan();
     fusion::FusionController fuser;

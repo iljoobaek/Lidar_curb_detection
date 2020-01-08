@@ -560,15 +560,15 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::M
     std::string fn_image = get_filename_image(root_path, data_folder, currentFrameIdx);
     std::cout << fn_image << std::endl;
     cv::Mat img = cv::imread(fn_image);
-    // if (find_objects_from_image(fn_image, img))
-    // {   
-    //     std::cout << "--- moving objects detected---\n";
-    // }
-    // else
-    // {
-    //     std::cout << "--- no objects detected---\n";
-    // }
-    // cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
+    if (find_objects_from_image(fn_image, img))
+    {   
+        std::cout << "--- moving objects detected---\n";
+    }
+    else
+    {
+        std::cout << "--- no objects detected---\n";
+    }
+    cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
     cv::imshow("image", img);
     cv::waitKey(1);
     

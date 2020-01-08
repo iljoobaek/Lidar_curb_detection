@@ -128,11 +128,12 @@ private:
         LIDAR_CAMERA_RADAR
     };
 public:
-    Boundary_detection(int num_of_scan, float sensor_height, std::string root_path, std::string data_folder, int start, int end): 
-                        num_of_scan(num_of_scan), dataReader(root_path, data_folder, start, end, true), 
+    Boundary_detection(int numOfScan, float sensor_height, std::string root_path, std::string data_folder, int start, int end, bool isDownSample): 
+                        dataReader(root_path, data_folder, start, end, isDownSample), 
                         tilted_angle(tilted_angle), sensor_height(sensor_height),
                         currentFrameIdx(start), root_path(root_path), data_folder(data_folder)
     {
+        num_of_scan = isDownSample ? numOfScan / 4 : numOfScan;
         ranges = std::vector<std::vector<int>>(num_of_scan*2, std::vector<int>(2));
         angles_16 = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
@@ -140,10 +141,11 @@ public:
         fuser = fusion::FusionController();
         object_detector = std::unique_ptr<Object_detection>(new Object_detection());
     } 
-    Boundary_detection(int num_of_scan, float sensor_height, std::string data_path): 
-                        num_of_scan(num_of_scan), dataReader(data_path), 
+    Boundary_detection(int numOfScan, float sensor_height, std::string data_path): 
+                        dataReader(data_path), 
                         tilted_angle(tilted_angle), sensor_height(sensor_height) 
     {
+        num_of_scan = numOfScan;
         ranges = std::vector<std::vector<int>>(num_of_scan*2, std::vector<int>(2));
         angles_16 = {-15.0, 1.0, -13.0, 3.0, -11.0, 5.0, -9.0, 7.0,
                         -7.0, 9.0, -5.0, 11.0, -3.0, 13.0, -1.0, 15.0};
@@ -209,12 +211,12 @@ private:
     std::string data_folder;
 
     // Camera
-    // std::vector<std::vector<float>> lidar_to_image = {{6.07818353e+02, -7.79647962e+02, -8.75258198e+00, 2.24308511e+01},
-    //                                                   {5.12565990e+02, 1.31878337e+01, -7.70608644e+02, -1.69836140e+02},
-    //                                                   {9.99862028e-01, -8.56083140e-03, 1.42350786e-02, 9.02290525e-03}};
-    std::vector<std::vector<float>> lidar_to_image = {{7.45484183e+00, -0.00000000e+00, -4.32854604e-01, -0.00000000e+00},
-                                                      {0.00000000e+00, 7.19218909e-01, -2.45532038e+02, -0.00000000e+00},
-                                                      {0.00000000e+00,  0.00000000e+00,  1.48075500e-02, -0.00000000e+00}};
+    std::vector<std::vector<float>> lidar_to_image = {{6.07818353e+02, -7.79647962e+02, -8.75258198e+00, 2.24308511e+01},
+                                                      {5.12565990e+02, 1.31878337e+01, -7.70608644e+02, -1.69836140e+02},
+                                                      {9.99862028e-01, -8.56083140e-03, 1.42350786e-02, 9.02290525e-03}};
+    // std::vector<std::vector<float>> lidar_to_image_kitti = {{7.45484183e+00, -0.00000000e+00, -4.32854604e-01, -0.00000000e+00},
+    //                                                   {0.00000000e+00, 7.19218909e-01, -2.45532038e+02, -0.00000000e+00},
+    //                                                   {0.00000000e+00,  0.00000000e+00,  1.48075500e-02, -0.00000000e+00}};
 
     std::unique_ptr<Object_detection> object_detector;
     int currentFrameIdx;
