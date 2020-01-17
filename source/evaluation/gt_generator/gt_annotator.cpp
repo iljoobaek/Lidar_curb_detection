@@ -181,49 +181,110 @@ pcl::visualization::PCLVisualizer::Ptr interactionCustomizationVis (pcl::PointCl
     return (viewer);
 }
 
-pcl::PointCloud<pcl::PointXYZRGB>::Ptr create_cloud_from_binary (const std::string &filename)
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr create_cloud_from_binary (const std::string &filename, bool isKitti)
 {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr point_cloud_ptr (new pcl::PointCloud<pcl::PointXYZRGB>);
     
-    int32_t num = 1000000;
-    float *data = (float *)malloc(num * sizeof(float));
-    float *px = data, *py = data + 1, *pz = data + 2, *pi = data + 3, *pr = data + 4;
-
-    FILE *stream = fopen(filename.c_str(), "rb");
-    num = fread(data, sizeof(float), num, stream) / 5;
-    for (int32_t i = 0; i < num; i++)
+    if (isKitti)
     {
-        std::vector<float> point({*px, *py, *pz});
-        rotate_and_translate(point);
-        
-        pcl::PointXYZRGB rgb_point;
-        rgb_point.x = point[0];
-        rgb_point.y = point[1];
-        rgb_point.z = point[2];
-        uint8_t r(255), g(255), b(255);
-        uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
-        rgb_point.rgb = *reinterpret_cast<float*>(&rgb);
-        point_cloud_ptr->points.push_back (rgb_point); 
-        px += 5, py += 5, pz += 5, pi += 5, pr += 5;
+        int32_t num = 1000000;
+        float *data = (float *)malloc(num * sizeof(float));
+        float *px = data, *py = data + 1, *pz = data + 2, *pi = data + 3;
+
+        FILE *stream = fopen(filename.c_str(), "rb");
+        num = fread(data, sizeof(float), num, stream) / 4;
+        for (int32_t i = 0; i < num; i++)
+        {
+            std::vector<float> point({*px, *py, *pz});
+            rotate_and_translate(point);
+            
+            pcl::PointXYZRGB rgb_point;
+            rgb_point.x = point[0];
+            rgb_point.y = point[1];
+            rgb_point.z = point[2];
+            uint8_t r(255), g(255), b(255);
+            uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
+            rgb_point.rgb = *reinterpret_cast<float*>(&rgb);
+            point_cloud_ptr->points.push_back (rgb_point); 
+            px += 4, py += 4, pz += 4, pi += 4;
+        }
+        fclose(stream);
     }
-    fclose(stream);
+    else
+    {
+        int32_t num = 1000000;
+        float *data = (float *)malloc(num * sizeof(float));
+        float *px = data, *py = data + 1, *pz = data + 2, *pi = data + 3, *pr = data + 4;
+
+        FILE *stream = fopen(filename.c_str(), "rb");
+        num = fread(data, sizeof(float), num, stream) / 5;
+        for (int32_t i = 0; i < num; i++)
+        {
+            std::vector<float> point({*px, *py, *pz});
+            rotate_and_translate(point);
+            
+            pcl::PointXYZRGB rgb_point;
+            rgb_point.x = point[0];
+            rgb_point.y = point[1];
+            rgb_point.z = point[2];
+            uint8_t r(255), g(255), b(255);
+            uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
+            rgb_point.rgb = *reinterpret_cast<float*>(&rgb);
+            point_cloud_ptr->points.push_back (rgb_point); 
+            px += 5, py += 5, pz += 5, pi += 5, pr += 5;
+        }
+        fclose(stream);
+    }
+
+    //int32_t num = 1000000;
+    //float *data = (float *)malloc(num * sizeof(float));
+    //float *px = data, *py = data + 1, *pz = data + 2, *pi = data + 3, *pr = data + 4;
+
+    //FILE *stream = fopen(filename.c_str(), "rb");
+    //num = fread(data, sizeof(float), num, stream) / 5;
+    //for (int32_t i = 0; i < num; i++)
+    //{
+    //    std::vector<float> point({*px, *py, *pz});
+    //    rotate_and_translate(point);
+    //    
+    //    pcl::PointXYZRGB rgb_point;
+    //    rgb_point.x = point[0];
+    //    rgb_point.y = point[1];
+    //    rgb_point.z = point[2];
+    //    uint8_t r(255), g(255), b(255);
+    //    uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
+    //    rgb_point.rgb = *reinterpret_cast<float*>(&rgb);
+    //    point_cloud_ptr->points.push_back (rgb_point); 
+    //    px += 5, py += 5, pz += 5, pi += 5, pr += 5;
+    //}
+    //fclose(stream);
     return point_cloud_ptr;
 }
 
 int main (int argc, char** argv)
 {
+    bool isKitti(false);
     std::string fn;
-    if (argc < 2)
-    {
-        fn = "evaluation_data/0000000601.bin";
-    }
-    else if (argc == 2)
+    if (argc == 2)
     {
         fn = argv[1];
     }
+    else if (argc == 3)
+    {
+        fn = argv[1];
+        std::string source = argv[2];
+        if (source == "kitti")
+        {
+            isKitti = true;
+        }
+        else
+        {
+            std::cerr << "Second argument invalid!\n";
+        }
+    }
     else
     {
-        std::cout << "Invalid number of arguments!\n";
+        std::cerr << "Invalid number of arguments!\n";
         return -1; 
     }
 
@@ -233,7 +294,7 @@ int main (int argc, char** argv)
 
     // Load point cloud
     pcl::PointCloud<pcl::PointXYZ>::Ptr basic_cloud_ptr (new pcl::PointCloud<pcl::PointXYZ>);
-    auto point_cloud_ptr = create_cloud_from_binary (fn);
+    auto point_cloud_ptr = create_cloud_from_binary (fn, isKitti);
 
     pcl::visualization::PCLVisualizer::Ptr viewer;
     viewer = interactionCustomizationVis(point_cloud_ptr, file);
