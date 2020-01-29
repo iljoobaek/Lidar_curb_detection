@@ -1,11 +1,13 @@
 #include <iostream>
 #include <vector>
-#include <string>
+#include <string> // memset()
 #include <set>
 #include <cmath>
 #include <opencv2/opencv.hpp>
 #include <opencv2/viz.hpp>
-
+#include <stdexcept>
+#include <sstream>
+#include <glob.h> // glob(), globfree()
 #include <experimental/filesystem>
 
 // Include VelodyneCapture Header
@@ -47,10 +49,14 @@ public:
         {
             type = DataType::BINARIES;
         }
-        for (int i = start; i < end; i++)
-        {
-            binaryFiles.push_back(getBinaryFile(i, fn));
-        } 
+        std::vector<std::string> xyz = glob_new( rootPath.c_str() + std::string(filename) + std::string("velodyne_points/data/*"));
+        for(auto name : xyz){
+            std::string root_path = rootPath.c_str() + std::string(filename) + std::string("velodyne_points/data/");
+            std::string substring =  std::string(name.begin() + root_path.size(), name.end()-4) ;
+            
+            int frame_num = std::atoi(substring.c_str());
+            binaryFiles.push_back(getBinaryFile(frame_num, fn));
+        }
     }
     ~LidarDataReader() {}
 private:
@@ -107,10 +113,34 @@ private:
         std::cout << "Read in " << pointcloud.size() << " points\n";
         return pointcloud;
     }
+    
+    std::vector<std::string> glob_new(const std::string& pattern)  {
+        glob_t globbuf;
+        int err = glob(pattern.c_str(), 0, NULL, &globbuf);
+        std::vector<std::string> filenames;
+        if(err == 0)
+        {
+            for (size_t i = 0; i < globbuf.gl_pathc; i++)
+            {
+                filenames.push_back(globbuf.gl_pathv[i]);
+            }
+
+            globfree(&globbuf);
+            return filenames;
+        }
+        else{
+            filenames.push_back("0");
+            return filenames;
+        }
+    }
+
+
     std::vector<std::vector<float>> readFromBinaryKitti(std::string &filename)
     {
         std::vector<double> centers;
+        
         std::ifstream in("centers.out");
+        
         std::string line;
         if (in.is_open())
         {
@@ -128,7 +158,6 @@ private:
             bounds.push_back((centers[i] + centers[i+1]) / 2);
         }
         std::set<int> downSampleNumbers({3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63});
-
         std::vector<std::vector<float>> pointcloud;
         int32_t num = 1000000;
         float *data = (float *)malloc(num * sizeof(float));
