@@ -152,8 +152,8 @@ class Eval:
         f.close()
     
 # Data paths
-gt_root_dir = '/home/rtml/Lidar_curb_detection/source/evaluation/gt_generator/evaluation_result'
-test_root_dir = '/home/rtml/Lidar_curb_detection/source/vscan_based/detection_result'
+gt_root_dir = '/home/rtml/Lidar_curb_detection/source/evaluation/accuracy_calculation/evaluation_result_20191126'
+test_root_dir = '/home/rtml/Lidar_curb_detection/source/evaluation/accuracy_calculation/detection_result'
 data_path = {'test_data': test_root_dir, 'ground_truth_data': gt_root_dir}
 
 if __name__ == '__main__':
