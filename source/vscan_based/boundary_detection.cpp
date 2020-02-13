@@ -1,6 +1,9 @@
 #include "boundary_detection.h"
 using namespace std::chrono;
 
+static int BEAMNUM = 720;
+static float delta = 2 * PI / BEAMNUM;
+
 template <typename T>
 std::vector<T> conv(std::vector<T> const &f, std::vector<T> const &g)
 {
@@ -340,7 +343,30 @@ void Boundary_detection::edge_filter_from_elevation(int scan_id, const std::vect
     }
 }
 
-void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool masking)
+bool Boundary_detection::isVscanBeam(float x, float y, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map)
+{
+    float theta = std::atan2(y, x);
+    if (theta < 0.0f) 
+    {
+        theta += 2 * PI;
+    }
+    std::cout << theta << std::endl;
+    assert(theta >= 0.0f && theta < 2 * PI);
+    int ithBeam = theta / delta;
+    std::cout << ithBeam << " beam" << std::endl;
+    if (map.find(ithBeam) != map.end())
+    {
+        float point_dist = std::sqrt(x*x + y*y); 
+        if (std::sqrt(x*x + y*y) + 0.5 >= vscanRes[map[ithBeam]][4])
+        {
+            std::cout << point_dist << " (" << x << ", " << y << ") " << vscanRes[map[ithBeam]][4] << " (" << vscanRes[map[ithBeam]][0] << ", " << vscanRes[map[ithBeam]][1] << ") " << std::endl;
+            return true;   
+        }
+    }
+    return false;
+}
+
+void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool masking, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map)
 {
     int st = this->ranges[scan_id][0], ed = this->ranges[scan_id][1];
     int n = ed - st;
@@ -392,27 +418,26 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        // vscan or object masking or nothing
+                        bool is_masked = false;
+                        bool is_vscan_object = false;
                         if (masking) {
-                            bool is_masked = false;
                             for (int j = cur_end; j <= cur_start; j++)
                             {
                                 if (this->is_objects[st + j]) 
                                 {
                                     is_masked = true;
-                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                                if (isVscanBeam(pointcloud[st+j][0], pointcloud[st+j][1], vscanRes, map))
+                                {
+                                    is_vscan_object = true;
                                     break;
                                 }
                             }
-                            if (!is_masked) {
-                                for (int j = cur_end; j <= cur_start; j++)
-                                {
-                                    this->is_boundary_masking[st + j] = true;
-                                }
-                                found = true;
-                                break;
-                            }
                         }
-                        else {
+                        if (!is_masked && !is_vscan_object)
+                        {
                             for (int j = cur_end; j <= cur_start; j++)
                             {
                                 this->is_boundary[st + j] = true;
@@ -423,27 +448,25 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                     }
                     if (cur_height > 0.1)
                     {
+                        bool is_masked = false;
+                        bool is_vscan_object = false;
                         if (masking) {
-                            bool is_masked = false;
                             for (int j = cur_end; j <= cur_start; j++)
                             {
                                 if (this->is_objects[st + j]) 
                                 {
                                     is_masked = true;
-                                    // cout << "Result being masked at " << scan_id / 2 << "\n";
+                                    break;
+                                }
+                                if (isVscanBeam(pointcloud[st+j][0], pointcloud[st+j][1], vscanRes, map))
+                                {
+                                    is_vscan_object = true;
                                     break;
                                 }
                             }
-                            if (!is_masked) {
-                                for (int j = cur_end; j <= cur_start; j++)
-                                {
-                                    this->is_boundary_masking[st + j] = true;
-                                }
-                                found = true;
-                                break;
-                            }
                         }
-                        else {
+                        if (!is_masked && !is_vscan_object) 
+                        {
                             for (int j = cur_end; j <= cur_start; j++)
                             {
                                 this->is_boundary[st + j] = true;
@@ -489,8 +512,9 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                         break;
                     if (cur_height > 0.05 && edge_end[i])
                     {
+                        bool is_masked = false;
+                        bool is_vscan_object = false;
                         if (masking) {
-                            bool is_masked = false;
                             for (int j = cur_start; j <= cur_end; j++)
                             {
                                 if (this->is_objects[st + j]) 
@@ -499,17 +523,15 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                                     // cout << "Result being masked at " << scan_id / 2 << "\n";
                                     break;
                                 }
-                            }
-                            if (!is_masked) {
-                                for (int j = cur_start; j <= cur_end; j++)
+                                if (isVscanBeam(pointcloud[st+j][0], pointcloud[st+j][1], vscanRes, map))
                                 {
-                                    this->is_boundary_masking[st + j] = true;
+                                    is_vscan_object = true;
+                                    break;
                                 }
-                                found = true;
-                                break;
                             }
                         }
-                        else {
+                        if (!is_masked && !is_vscan_object) 
+                        {
                             for (int j = cur_start; j <= cur_end; j++)
                             {
                                 this->is_boundary[st + j] = true;
@@ -520,8 +542,10 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                     }
                     if (cur_height > 0.1)
                     {
-                        if (masking) {
-                            bool is_masked = false;
+                        bool is_masked = false;
+                        bool is_vscan_object = false;
+                        if (masking) 
+                        {
                             for (int j = cur_start; j <= cur_end; j++)
                             {
                                 if (this->is_objects[st + j]) 
@@ -530,17 +554,15 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
                                     // cout << "Result being masked at " << scan_id / 2 << "\n";
                                     break;
                                 }
-                            }
-                            if (!is_masked) {
-                                for (int j = cur_start; j <= cur_end; j++)
+                                if (isVscanBeam(pointcloud[st+j][0], pointcloud[st+j][1], vscanRes, map))
                                 {
-                                    this->is_boundary_masking[st + j] = true;
+                                    is_vscan_object = true;
+                                    break;
                                 }
-                                found = true;
-                                break;
                             }
                         }
-                        else {
+                        if (!is_masked && !is_vscan_object) 
+                        {
                             for (int j = cur_start; j <= cur_end; j++)
                             {
                                 this->is_boundary[st + j] = true;
@@ -559,8 +581,9 @@ void Boundary_detection::find_boundary_from_half_scan(int scan_id, int k, bool m
     }
 }
 
-std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans) 
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::Mat &rot, const cv::Mat &trans, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map) 
 {
+    // For object detection
     std::string fn_image = get_filename_image(root_path, data_folder, currentFrameIdx);
     std::cout << fn_image << std::endl;
     cv::Mat img = cv::imread(fn_image);
@@ -572,13 +595,13 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::M
     {
         std::cout << "--- no objects detected---\n";
     }
-    cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
+    // cv::resize(img, img, cv::Size(img.cols/2, img.rows/2));
     cv::imshow("image", img);
     cv::waitKey(1);
-    
+
     for (int i = 0; i < num_of_scan*2; i++)
     {
-        find_boundary_from_half_scan(i, 8, false);
+        find_boundary_from_half_scan(i, 8, true, vscanRes, map);
     }
     // If radar data available, read the data from shared memory
 
