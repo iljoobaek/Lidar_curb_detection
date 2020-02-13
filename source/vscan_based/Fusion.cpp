@@ -114,6 +114,45 @@ public:
         return generateLidarLine(lidarPoints);
     }
 
+    std::vector<cv::viz::WPolyLine> displayLineFromCoeffs(std::vector<cv::Vec3f>& points, std::vector<float>& solution)
+    {
+        std::vector<float> x;
+        for (int i = 0; i < points.size(); i++) {
+            //It is reversed, the xDistance is y in the y = mx+b, and yDistance is x
+            x.push_back(points[i][1]);
+        }
+
+        auto minmaxX = std::minmax_element(x.begin(), x.end());
+        float xRange = *minmaxX.second - *minmaxX.first;
+        size_t N = x.size();
+        int order = 3;
+
+        std::vector<float> coeffs;
+        for (size_t i = 0; i < order+1; ++i) {
+            coeffs.push_back(solution[i]);
+	    std::cout<<"pushing "<<solution[i]<<"\n";
+        }
+        std::vector<cv::Vec3f> linePoints;
+	std::reverse(coeffs.begin(), coeffs.end()); 
+        for (int i = *minmaxX.first * 100; i <= *minmaxX.second * 100; i++) {
+            linePoints.push_back(cv::Vec3f(coeffs[0] + coeffs[1] * i / 100. + coeffs[2] * powf(i / 100., 2) + coeffs[3] * powf(i / 100., 3), i / 100., 1));
+        }
+        if (xRange < (coeffs[0] + coeffs[1] * *minmaxX.second + coeffs[2] * powf(*minmaxX.second, 2) + coeffs[3] * powf(*minmaxX.second / 100., 3)) - (coeffs[0] + coeffs[1] * *minmaxX.first + coeffs[2] * powf(*minmaxX.first, 2) + coeffs[3] * powf(*minmaxX.first / 100., 3))) {
+            std::vector<cv::Vec3f> zero;
+            zero.push_back(cv::Vec3f(0, 0, 1));
+            cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
+            cv::viz::WPolyLine justLine = cv::viz::WPolyLine(pointsMat, cv::viz::Color::gold());
+            std::vector<cv::viz::WPolyLine> displayLines = { justLine };
+            return displayLines;
+        }
+        cv::Mat pointsMat = cv::Mat(static_cast<int>(linePoints.size()), 1, CV_32FC3, &linePoints[0]);
+        cv::viz::WPolyLine justLine = cv::viz::WPolyLine(pointsMat, cv::viz::Color::black() );
+        std::vector<cv::viz::WPolyLine> displayLines = { justLine };
+        return displayLines;
+        
+    }
+
+
     std::vector<cv::viz::WPolyLine> displayThirdOrder(std::vector<cv::Vec3f>& lidarPoints)
     {
         leftPolyLineCoeffs.clear();

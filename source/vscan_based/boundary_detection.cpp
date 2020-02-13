@@ -25,15 +25,43 @@ bool Boundary_detection::isRun()
     return dataReader.isRun();
 }
 
-void Boundary_detection::retrieveData()
+
+// std::vector<int> Boundary_detection::getGlobFrame(){
+
+// }
+
+std::vector<int> Boundary_detection::retrieveData()
 {
     dataReader >> pointcloud;
     // Reverse the order of the points if from kitti dataset
     if (isKitti)
     {
+        std::cout<<"Is kitti \n";
+        std::cout<<isKitti ;
         std::reverse(pointcloud.begin(), pointcloud.end());
     }
+    std::cout<<"saving \n";
     pointcloud_raw = pointcloud;
+    std::vector<int> frameNums{dataReader.globStartFrame, dataReader.globEndFrame};
+    return frameNums;
+}
+
+std::vector<std::vector<cv::Vec3f>> Boundary_detection::getLeftRightLines(std::vector<cv::Vec3f> &buf)
+{
+    return fuser.findLidarLine(buf);
+}
+
+
+std::vector<cv::viz::WPolyLine> Boundary_detection::getLineFromCoeffs(std::vector<cv::Vec3f> &buf,std::vector<float>& solution, int option)
+{
+    std::vector<std::vector<cv::Vec3f> > lines = fuser.findLidarLine(buf);
+    if(option ==0){
+        return fuser.displayLineFromCoeffs(lines[0], solution); // left 
+    }
+    else{
+        return fuser.displayLineFromCoeffs(lines[1], solution); //right
+    }
+    
 }
 
 std::vector<cv::viz::WPolyLine> Boundary_detection::getThirdOrderLines(std::vector<cv::Vec3f> &buf)
@@ -148,8 +176,11 @@ void Boundary_detection::rearrange_pointcloud()
 
 void Boundary_detection::pointcloud_preprocessing(const cv::Mat &rot)
 {
+    std::cout<<"reached \n";
     rotate_and_translate_multi_lidar_yaw(rot);
+    std::cout<<"rotate \n";
     max_height_filter(.45);
+    std::cout<<"filter \n";
     rearrange_pointcloud();
     reset();
 }
@@ -585,10 +616,10 @@ std::vector<std::vector<cv::Vec3f>> Boundary_detection::runDetection(const cv::M
     // is_boundary = std::vector<bool>(pointcloud.size(), false);
     auto buf = getLidarBuffers(pointcloud, is_boundary);
 
-    // std::vector<float> leftBoundaryCoeffs = getLeftBoundaryCoeffs();;
-    // std::vector<float> rightBoundaryCoeffs = getRightBoundaryCoeffs();;
-    // writeResultTotxt(leftBoundaryCoeffs, 0);
-    // writeResultTotxt(rightBoundaryCoeffs, 1);
+    std::vector<float> leftBoundaryCoeffs = getLeftBoundaryCoeffs();;
+    std::vector<float> rightBoundaryCoeffs = getRightBoundaryCoeffs();;
+    writeResultTotxt(leftBoundaryCoeffs, 0);
+    writeResultTotxt(rightBoundaryCoeffs, 1);
     currentFrameIdx++;
     return buf;
 }

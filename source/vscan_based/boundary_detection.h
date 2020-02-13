@@ -38,7 +38,7 @@ class Object_detection {
 public:
     Object_detection() {
         // path of the virtual env
-        setenv("PYTHONHOME", "/home/rtml/Lidar_curb_detection/source/lidar_based/curb_detection_cpp/env/", true);
+        setenv("PYTHONHOME", "/home/droid/manoj_work/Lidar_curb_detection_full/source/vscan_based/env/", true);
         Py_Initialize();
         if ( !Py_IsInitialized() ){
             std::cerr << "Initialize failed\n";
@@ -155,7 +155,8 @@ public:
     }
 
     bool isRun();
-    void retrieveData();
+    // void retrieveData();
+    std::vector<int> retrieveData();
     void pointcloud_preprocessing(const cv::Mat &rot);
     std::vector<std::vector<cv::Vec3f>> runDetection(const cv::Mat &rot, const cv::Mat &trans);
     std::vector<std::vector<float>>& get_pointcloud();
@@ -163,6 +164,10 @@ public:
     std::vector<bool> get_result_bool();
     std::vector<std::vector<cv::Vec3f>> getLidarBuffers(const std::vector<std::vector<float>> &pointcloud, const std::vector<bool> &result);
     std::vector<cv::viz::WPolyLine> getThirdOrderLines(std::vector<cv::Vec3f> &buf); 
+    
+    std::vector<std::vector<cv::Vec3f>> getLeftRightLines(std::vector<cv::Vec3f> &buf);
+    std::vector<cv::viz::WPolyLine> getLineFromCoeffs(std::vector<cv::Vec3f> &buf, std::vector<float>&solution, int option); 
+      
     std::vector<float> getLeftBoundaryCoeffs();
     std::vector<float> getRightBoundaryCoeffs();
     void writeResultTotxt(const std::vector<float> &boundaryCoeffs, int leftRight);
