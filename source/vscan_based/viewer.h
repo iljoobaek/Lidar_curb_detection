@@ -37,7 +37,7 @@ void cvViz3dCallbackSetting(cv::viz::Viz3d &viewer, bool &pause)
 }
 
 // Visualize vscan result, ground truth lines and detected lines
-void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<bool>> &results, cv::viz::Viz3d &viewer, std::vector<std::vector<float>> &vscanRes, std::vector<cv::viz::WPolyLine> &polyLine, cv::viz::WPolyLine &gtLine) 
+void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::vector<std::vector<bool>> &results, cv::viz::Viz3d &viewer, std::vector<std::vector<float>> &vscanRes, std::vector<cv::viz::WPolyLine> &polyLine, std::vector<cv::viz::WPolyLine> &gtLines) 
 {
     // if (buffers[0].empty()) {return;}
     viewer.removeAllWidgets();
@@ -64,7 +64,7 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
     int cnt = 0; 
     for (auto &res : vscanRes)
     {
-        cv::viz::WLine line(cv::Point3f(res[0], res[1], res[2]), cv::Point3f(res[0], res[1], res[3]), cv::viz::Color::green());
+        cv::viz::WLine line(cv::Point3f(res[0], res[1], res[2]), cv::Point3f(res[0], res[1], res[3]), cv::viz::Color::yellow());
         line.setRenderingProperty(cv::viz::LINE_WIDTH, 5.0); 
         viewer.showWidget("Line Widget"+std::to_string(cnt++), line);
     }
@@ -82,9 +82,12 @@ void updateViewerFromBuffers(std::vector<std::vector<cv::Vec3f>> &buffers, std::
     }
     polyLine[0].setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
     polyLine[1].setRenderingProperty(cv::viz::LINE_WIDTH, 3.0); 
+    gtLines[0].setRenderingProperty(cv::viz::LINE_WIDTH, 2.0); 
+    gtLines[1].setRenderingProperty(cv::viz::LINE_WIDTH, 2.0); 
     viewer.showWidget("Poly Left", polyLine[0]);
     viewer.showWidget("Poly Right", polyLine[1]);
-    viewer.showWidget("Poly Right gt", gtLine);
+    viewer.showWidget("Poly Left gt", gtLines[0]);
+    viewer.showWidget("Poly Right gt", gtLines[1]);
     viewer.showWidget("Coordinate Widget", cv::viz::WCoordinateSystem(2));
     viewer.showWidget("Cloud", collection);
     viewer.setRenderingProperty("Cloud", cv::viz::POINT_SIZE, 2.0);  // Set point size of the point cloud

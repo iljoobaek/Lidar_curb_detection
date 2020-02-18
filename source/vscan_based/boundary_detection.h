@@ -158,7 +158,7 @@ public:
     // void retrieveData();
     std::vector<int> retrieveData();
     void pointcloud_preprocessing(const cv::Mat &rot);
-    std::vector<std::vector<cv::Vec3f>> runDetection(const cv::Mat &rot, const cv::Mat &trans);
+    std::vector<std::vector<cv::Vec3f>> runDetection(const cv::Mat &rot, const cv::Mat &trans, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map);
     std::vector<std::vector<float>>& get_pointcloud();
     std::vector<int> get_result();
     std::vector<bool> get_result_bool();
@@ -191,8 +191,9 @@ private:
     std::vector<std::vector<float>> get_image_points();
     bool is_in_bounding_box(const std::vector<float> &point, const std::vector<std::vector<int>> &bounding_boxes);
     bool find_objects_from_image(std::string filename, cv::Mat &img);
+    bool isVscanBeam(float x, float y, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map);
 
-    void find_boundary_from_half_scan(int scan_id, int k, bool masking);
+    void find_boundary_from_half_scan(int scan_id, int k, bool masking, const std::vector<std::vector<float>> &vscanRes, std::unordered_map<int, int> &map);
 
     void reset();    
 

@@ -95,18 +95,15 @@ public:
             
             int frame_num = std::atoi(substring.c_str());
             binaryFiles.push_back(getBinaryFile(frame_num, fn));
+            
             if(start_count == 0){
                 globStartFrame = frame_num;
             }
             start_count = 1;
-            globEndFrame =frame_num;
-            // binaryFiles.push_back(getBinaryFile(frmae_num, fn));
-        }
-        // for (int i = start; i < end; i++)
-        // {
-        //     binaryFiles.push_back(getBinaryFile(i, fn));
-        // } 
-    }
+            globEndFrame = frame_num;
+            }
+       }
+        
     ~LidarDataReader() {}
 private:
     void laser_to_cartesian(std::vector<velodyne::Laser> &lasers, std::vector<std::vector<float>> &pointcloud, float theta, cv::Mat &rot, cv::Mat &trans) 

@@ -8,7 +8,7 @@
 
 // Parameters for virtual scan
 static int BEAMNUM = 720;
-static double STEP = 0.05;
+static double STEP = 0.5;
 static double MINFLOOR = -2.0;
 static double MAXFLOOR = -1.0;
 static double MAXCEILING = 6.0;
@@ -32,9 +32,10 @@ void signalHandler(int signum)
     sig_caught = 1;
 }
 
-std::vector<std::vector<float>> getVscanResult(const FastVirtualScan &virtualscan, const QVector<double> &beams)
+std::pair<std::vector<std::vector<float>>, std::unordered_map<int, int>> getVscanResult(const FastVirtualScan &virtualscan, const QVector<double> &beams)
 {
     std::vector<std::vector<float>> res;
+    std::unordered_map<int, int> m;
     double density = 2 * PI / BEAMNUM;
     for (int i = 0; i < BEAMNUM; i++)
     {
@@ -45,11 +46,19 @@ std::vector<std::vector<float>> getVscanResult(const FastVirtualScan &virtualsca
         }
         float x = beams[i] * std::cos(theta);
         float y = beams[i] * std::sin(theta);
+        float thetaT = std::atan2(y, x);
+        if (thetaT < 0.0f) 
+        {
+            thetaT += 2 * PI;
+        }
+        int ithBeam = thetaT / density;
         float minHeight = virtualscan.minheights[i];
         float maxHeight = virtualscan.maxheights[i];
-        res.push_back({x, y, minHeight, maxHeight});
+        float dist = std::sqrt(x*x + y*y);
+        res.push_back({x, y, minHeight, maxHeight, dist});
+        m[ithBeam] = res.size()-1;
     }  
-    return res; 
+    return std::make_pair(res, m); 
 }
 
 std::vector<cv::Vec3f> vectorToVec3f(const std::vector<std::vector<float>> &vec)
@@ -62,13 +71,15 @@ std::vector<cv::Vec3f> vectorToVec3f(const std::vector<std::vector<float>> &vec)
     return res;
 }
 
-std::string getEvalFilename(const std::string &root, int frameIdx)
+std::vector<std::string> getEvalFilenames(const std::string &root, int frameIdx)
 {
+    std::vector<std::string> filenames;
     std::stringstream ss;
     ss << std::setfill('0') << std::setw(10) << frameIdx;
-    std::string filename = root + "/gt_" + ss.str() + "_r.txt"; 
-    std::cout<<filename<<std::endl;
-    return filename; 
+    filenames.push_back(root + "/gt_" + ss.str() + "_l.txt"); 
+    filenames.push_back(root + "/gt_" + ss.str() + "_r.txt"); 
+    std::cout<<filenames[0]<<std::endl;
+    return filenames; 
 }
 
 cv::viz::WPolyLine generateWPolyLine(std::vector<float> coeffs, float minY, float maxY)
@@ -117,10 +128,8 @@ std::vector<std::string> glob_gt(const std::string& pattern)  {
 
 
 
-cv::viz::WPolyLine generateGTWPolyLine(const std::string &root, int frameIdx)
+cv::viz::WPolyLine generateGTWPolyLine(std::string &filename)
 {
-    std::string filename = getEvalFilename(root, frameIdx);
-    std::cout<<"before \n";
     std::ifstream f(filename);
     std::vector<std::vector<float>> data;
     if (f.is_open()) 
@@ -160,7 +169,6 @@ cv::viz::WPolyLine generateGTWPolyLine(const std::string &root, int frameIdx)
     cv::Mat pointsMat = cv::Mat(static_cast<int>(zero.size()), 1, CV_32FC3, &zero[0]);
     return cv::viz::WPolyLine(pointsMat, cv::viz::Color::blue());
 }
-
 
 ///////////////////////////////// mbhat //////////////////////////////////////////////
 
@@ -226,8 +234,21 @@ std::string pathJoin(std::string p1, std::string p2) {
 ///////////////////////////////////////// End: mbhat ////////////////////////////////////////////////
 
 
-// Default
-std::string evalPath = "/home/droid/manoj_work/Lidar_curb_detection_full/source/evaluation/accuracy_calculation/evaluation_result_20191126";
+std::vector<cv::viz::WPolyLine> generateGTWPolyLines(const std::string &root, int frameIdx)
+{
+    std::vector<cv::viz::WPolyLine> polyLines;
+    std::vector<std::string> filenames = getEvalFilenames(root, frameIdx);
+    std::cout<<"before \n";
+    for (std::string &filename : filenames)
+    {
+        polyLines.push_back(generateGTWPolyLine(filename));
+    }
+    return polyLines;
+}
+
+// std::string evalPath = "/home/rtml/Lidar_curb_detection/source/evaluation/gt_generator/evaluation_result_20191126";
+// std::string evalPath = "/home/rtml/Lidar_curb_detection/source/evaluation/gt_generator/evaluation_result_kitti_20110926_0002";
+std::string evalPath = "/home/droid/manoj_work/Lidar_curb_detection_full/source/evaluation/accuracy_calculation/0051_gt";
 
 int main(int argc, char* argv[]) 
 {
@@ -290,11 +311,19 @@ int main(int argc, char* argv[])
 
     // Boundary detection object : our data
     // int frameStart = 601, frameEnd = 650;
-    // Boundary_detection detection(16, 1.125, "/home/rtml/lidar_radar_fusion_curb_detection/data/", "20191126163620_synced/", frameStart, frameEnd+1, false);
+    // Boundary_detection detection(16, 1.125, "/home/rtml/lidar_radar_fusion_curb_detection/data/", "20191126163620_synced_601_650/", frameStart, frameEnd+1, false);
     
     // Boundary detection object : kitti data How many frames?
     int frameStart = 0, frameEnd = 100; // DOesnt matter, using glob inside datareader
     Boundary_detection detection(64, 1.125, datePath, kittiVideoFolder+"/", frameStart, frameEnd+1, false);
+
+    // Boundary detection object : kitti data
+    // int frameStart = 30, frameEnd = 50;
+    // Boundary_detection detection(64, 1.125, "/home/rtml/LiDAR_camera_calibration_work/data/kitti_data/2011_09_26/", "2011_09_26_drive_0013_sync/", frameStart, frameEnd+1, false);
+    
+    // Boundary detection object : kitti data
+//     int frameStart = 0, frameEnd = 50;
+//     Boundary_detection detection(64, 1.125, "/home/rtml/LiDAR_camera_calibration_work/data/kitti_data/2011_09_26/", "2011_09_26_drive_0051_sync/", frameStart, frameEnd+1, false);
     
     // Virtual scan object
     FastVirtualScan virtualscan = FastVirtualScan();
@@ -369,10 +398,8 @@ int main(int argc, char* argv[])
 
         auto res = getVscanResult(virtualscan, beams);
         auto t_end = std::chrono::system_clock::now();
-
-        auto buf = detection.runDetection(rot_vec[0], trans_vec[0]);
+        auto buf = detection.runDetection(rot_vec[0], trans_vec[0], res.first, res.second);
         
-        // auto buf = detection.getLidarBuffers(detection.get_pointcloud(), detection.get_result_bool());
         std::vector<cv::viz::WPolyLine> thirdOrder = detection.getThirdOrderLines(buf[1]);
         results[0] = detection.get_result_bool();
         
@@ -687,9 +714,12 @@ int main(int argc, char* argv[])
         }
 
 
-        cv::viz::WPolyLine gtLine = generateGTWPolyLine(evalPath, frameStart+frame_idx); //  frameStart+frame_idx
+        //cv::viz::WPolyLine gtLine = generateGTWPolyLine(evalPath, frameStart+frame_idx); //  frameStart+frame_idx
+        //LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res, thirdOrder, gtLine);
+
+        std::vector<cv::viz::WPolyLine> gtLines = generateGTWPolyLines(evalPath, frameStart+frame_idx);
         std::cout << " Reached here \n";
-        LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res, thirdOrder, gtLine);
+        LidarViewer::updateViewerFromBuffers(buffers, results, viewer, res.first, thirdOrder, gtLines);
 
         std::chrono::duration<double, std::milli> fp_ms = t_end - t_start;
         std::cout << "Frame " << frame_idx++ << ": takes " << fp_ms.count() << " ms for vsan" << std::endl;
