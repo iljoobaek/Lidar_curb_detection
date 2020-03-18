@@ -74,7 +74,7 @@ class Filter():
         print("old state:", old, " Estimate:", X_hat_t, " Measure:", points, " New:", X_t)
         return self.X_hat_t
 
-def cubic(k, a, b, c, d):
+def cubic(k, a=0, b=0, c=0, d=0):
     return a * pow(k,3) + b * pow(k,2) + c * pow(k,1) + d
 
 def filter_process(points, line_coeffs, frame_num, line_option ):
@@ -82,12 +82,14 @@ def filter_process(points, line_coeffs, frame_num, line_option ):
     if frame_num <= 10:
             f = [Filter() for i in range(5)]
             prev_coeff = line_coeffs
+            prev_sampled_pts = np.zeros(5)
     else:
         file = open('filters_{}.pkl'.format(line_option), 'rb')
         instance_dict = pickle.load(file)
         
         file.close()
         prev_coeff = instance_dict["prev_coeff_{}".format(line_option)]
+        prev_sampled_pts = instance_dict["prev_sampled_pts_{}".format(line_option)]
         print("PREV COEFF IS ", prev_coeff)
         f = [instance_dict['0'], instance_dict['1'], instance_dict['2'], instance_dict['3'], instance_dict['4']]
         with open('filters_init_pts_{}.pkl'.format(line_option), 'wb') as output:
@@ -98,34 +100,6 @@ def filter_process(points, line_coeffs, frame_num, line_option ):
     if len(points) > 6*3:
         try:
             points = np.array(points).reshape(-1, 3)
-#             x = points[:, 0].tolist()
-#             y = points[:, 1].tolist()
-# #             a,b,c,d = line_coeffs
-#             mini = min(x); maxi = max(x);
-
-# #             print("sorted list ...")
-# #             x_vals= sorted(np.linspace(mini, maxi, len(points)), reverse=True)
-# #             line_coeffs = [a * math.pow(k,3) + b * math.pow(k,2) + c * math.pow(k,1) + d for k in x_vals]
-#             print("Interpolating ...")
-#             # Find approximate curve
-#             tck,u = interpolate.splprep(np.array(map(tuple,points[:,:2])).T.tolist())
-#             unew = np.arange(mini, maxi, 0.01)
-#             # Sampling 1000 points with coeff b/w 0 and 1
-#             x1,y1 = interpolate.splev(np.linspace(0, 1, 1000), tck)
-
-#             print("Cum sum ...")
-#             # distances between points and then cumulative sum to get mag of vector for each point
-#             distance = np.cumsum(np.sqrt( np.ediff1d(x1, to_begin=0)**2 + np.ediff1d(y1, to_begin=0)**2 ))
-#             print(distance)
-#             distance = distance/distance[-1]
- 
-#             fx, fy = interp1d( distance, x1 ), interp1d( distance, y1 )
-#             alpha = np.linspace(0, 1, 5)
-#             x_regular, y_regular = fx(alpha), fy(alpha)
-#             print("X reg Y reg")
-#             print(x_regular)
-#             print(y_regular)
-            
             xy = points[:, :2]
             min_point = min(map(tuple,xy))
             max_point = max(map(tuple,xy))
@@ -135,7 +109,6 @@ def filter_process(points, line_coeffs, frame_num, line_option ):
             y = np.arange(miniy, maxiy, (maxiy-miniy)/20)
             p_2 = np.polyfit(y, x, 3)
             
-#             x = np.arange(minix, maxix, (maxix-minix)/5)
             x = np.arange(miniy, maxiy, (maxiy-miniy)/5)
             p2 = np.poly1d(p_2)
             p2_points  = cubic(x, *p2)
@@ -177,6 +150,7 @@ def filter_process(points, line_coeffs, frame_num, line_option ):
             for i, each in enumerate(f):
                 instance_dict[str(i)] = each
             instance_dict["prev_coeff_{}".format(line_option)] = line_coeffs
+            instance_dict["prev_sampled_pts_{}".format(line_option)] = new_sampled_pts
             pickle.dump(instance_dict, output, pickle.HIGHEST_PROTOCOL)
 
         with open('filters_sampled_pts_{}.pkl'.format(line_option), 'wb') as output:
@@ -189,13 +163,14 @@ def filter_process(points, line_coeffs, frame_num, line_option ):
         prev_coeff = np.array(prev_coeff)
         line_coeffs = np.array(line_coeffs)
         print("______________DIFF COEFS_____________", prev_coeff - line_coeffs)
+        print("______________DIFF POINTS_____________", np.sum(prev_sampled_pts - new_sampled_pts))
+
     except Exception as e:
         print(e)
         print("Error in diff tracker")
-#         print(prev_coeff)
         
     
-    return new_sampled_pts
+    return new_sampled_pts, np.sum(prev_coeff - line_coeffs), np.abs(np.sum(prev_sampled_pts - new_sampled_pts))
     
 def kalman_filter_chk(lpoints, rpoints, l1, r1, frame_num):
     c = 0
@@ -203,17 +178,13 @@ def kalman_filter_chk(lpoints, rpoints, l1, r1, frame_num):
     if(lpoints and rpoints):
         print("len of lpoints : ", len(lpoints))
         c+=1
-        # print("Frame num ", frame_num)
-        # Start Filter process when present
-        # new_l_points = filter_process(lpoints, l1, frame_num, 'l' )
-        new_r_points = filter_process(rpoints, r1, frame_num, 'r' )
-        print("HERE2")
+        new_r_points, coeff_diff, point_diff = filter_process(rpoints, r1, frame_num, 'r' )
+        
         try:
             print(new_r_points[0].reshape(-1))
             x_pts = new_r_points[0].reshape(-1).tolist()
             y_pts = new_r_points[1].reshape(-1).tolist()
-#             x_pts.reverse()
-#             y_pts.reverse()
+            
             z = np.polyfit(x_pts, y_pts, 3)
             z = z.tolist()
             z.reverse()
@@ -234,9 +205,11 @@ def kalman_filter_chk(lpoints, rpoints, l1, r1, frame_num):
         np.save("state_update_chars", saved)
         
         print("_______________ both update _____________________")
-        r1 = z
-#         if z[0] < 5:
-#             r1 = z
+        
+        if point_diff < 5:
+            r1 = z
+        else:
+            pass
         
     else:
         if(l1):
@@ -255,7 +228,7 @@ def kalman_filter_chk(lpoints, rpoints, l1, r1, frame_num):
                 r1 = [0,0,0, 0]
                 c-=1   
             else:
-                new_r_points = filter_process(rpoints, r1, frame_num, 'r' )
+                new_r_points, coeff_diff, point_diff = filter_process(rpoints, r1, frame_num, 'r' )
                 print("HERE3")
                 try:
                     print(new_r_points[0].reshape(-1))
@@ -278,9 +251,6 @@ def kalman_filter_chk(lpoints, rpoints, l1, r1, frame_num):
         else:
             print("something wrong")
 
-    print(l1)
-    print(r1)
     l1.extend(r1)
     print(l1)
-    print("extended len is ", len(l1))
     return l1
