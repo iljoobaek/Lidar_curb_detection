@@ -1,0 +1,22 @@
+if the root path has "kitti" written, the reader will read data like the binary for kitti data. So of our data the path to the bin files should not contain "kitti"
+
+64, false: Our data
+16, false: Kitti 16 scan data
+64, true: Kitti 64 scan data
+
+NOTE: Change the address of pcap files to your pcap file locations in sensor_config.h before compiling.
+
+make -j5 |& grep -E "warning|error"
+cd build/ && make -j3|& grep -E "error" && cd ..
+cd build/ && make -j2|& grep -E "error" && cd ..
+
+./Curb_detection_manager -root "/home/droid/manoj_work/Curb_detect_merge/source" -data "/home/droid/manoj_work/Curb_detect_merge/kitti_data/" -date 2011_09_26 -video 2011_09_26_drive_0014_sync -v -numoflidars 2
+
+./Curb_detection -root "/home/droid/manoj_work/Curb_detect_merge/source" -data "/home/droid/manoj_work/Curb_detect_merge/kitti_data/" -date 2011_09_26 -video 2011_09_26_drive_0014_sync -v -lidar 0 -pcap 1
+
+./Curb_detection_client_viewer -root "/home/droid/manoj_work/Curb_detect_merge/source" -data "/home/droid/manoj_work/Curb_detect_merge/kitti_data/" -date 2011_09_26 -video 2011_09_26_drive_0014_sync -v -lidar 1 -pcap 1
+
+
+
+
+
