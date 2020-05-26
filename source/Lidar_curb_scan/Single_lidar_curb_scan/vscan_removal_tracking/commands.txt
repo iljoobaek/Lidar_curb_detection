@@ -1,0 +1,12 @@
+if the root path has "kitti" written, the reader will read data like the binary for kitti data. So of our data the path to the bin files should not contain "kitti"
+
+64, false: Our data
+16, false: Kitti 16 scan data
+64, true: Kitti 64 scan data
+
+Commands:
+
+./boundary_detection "/home/droid/manoj_work/Curb_detect_merge/source" "/home/droid/manoj_work/data/" 2011_09_26 2011_09_26_drive_0048_sync 
+
+./boundary_detection "/home/droid/manoj_work/Curb_detect_merge/source" "/home/droid/manoj_work/data" our_data autoware-20200228180428 DEBUG
+
